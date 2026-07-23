@@ -2,56 +2,142 @@
 //  YouTubePlayerView.swift
 //  GTA radio
 //
-//  Official YouTube IFrame Player hosted in a WKWebView. No API key, no
-//  media extraction — we only embed the player exactly as YouTube intends.
+//  Official YouTube IFrame Player API hosted in a WKWebView. No API key, no
+//  media extraction — we embed the player exactly as YouTube intends and drive
+//  it with loadVideoById / loadPlaylist. The web view is created once and kept
+//  alive so audio keeps playing while the UI (and overlay) come and go.
 //
 
 import SwiftUI
 import WebKit
 import Combine
 
-/// Holds the single long-lived web view so playback survives view redraws.
-final class YouTubePlayerController: ObservableObject {
+final class YouTubePlayerController: NSObject, ObservableObject, WKScriptMessageHandler, WKNavigationDelegate {
     let webView: WKWebView
-    private var isLoaded = false
 
-    init() {
+    @Published var isPlaying = false
+    @Published var nowPlayingTitle: String?
+
+    private var ready = false
+    private enum Pending { case video(String), playlist(String) }
+    private var pending: Pending?
+
+    override init() {
         let config = WKWebViewConfiguration()
         config.allowsAirPlayForMediaPlayback = true
+        // Critical for a radio app: let the player start with sound, no click.
         config.mediaTypesRequiringUserActionForPlayback = []
+        let ucc = WKUserContentController()
+        config.userContentController = ucc
+
         webView = WKWebView(frame: .zero, configuration: config)
-        webView.setValue(false, forKey: "drawsBackground") // transparent
+        super.init()
+        ucc.add(self, name: "bridge")
+        webView.navigationDelegate = self
+        if webView.responds(to: Selector(("setDrawsBackground:"))) {
+            webView.setValue(false, forKey: "drawsBackground")
+        }
+        loadPlayerShell()
     }
 
-    /// Load a single video by ID.
+    // MARK: Public controls
+
     func playVideo(_ id: String) {
-        loadPlayer(embedPath: "\(id)?autoplay=1&enablejsapi=1&playsinline=1")
+        if ready { evaluate("loadVideo('\(id)')") } else { pending = .video(id) }
     }
 
-    /// Load a playlist by ID.
     func playPlaylist(_ id: String) {
-        loadPlayer(embedPath: "videoseries?list=\(id)&autoplay=1&enablejsapi=1")
+        if ready { evaluate("loadList('\(id)')") } else { pending = .playlist(id) }
     }
 
-    private func loadPlayer(embedPath: String) {
-        let html = """
-        <!DOCTYPE html><html><head>
-        <meta name="viewport" content="width=device-width, initial-scale=1">
-        <style>html,body{margin:0;height:100%;background:#000;overflow:hidden}
-        iframe{position:absolute;top:0;left:0;width:100%;height:100%;border:0}</style>
-        </head><body>
-        <iframe src="https://www.youtube-nocookie.com/embed/\(embedPath)"
-          allow="autoplay; encrypted-media; picture-in-picture"
-          allowfullscreen></iframe>
-        </body></html>
-        """
-        webView.loadHTMLString(html, baseURL: URL(string: "https://www.youtube.com"))
-        isLoaded = true
-    }
-
+    func pause() { evaluate("if(window.player)player.pauseVideo();") }
+    func resume() { evaluate("if(window.player)player.playVideo();") }
     func stop() {
-        webView.loadHTMLString("<body style='background:#000'></body>", baseURL: nil)
+        evaluate("if(window.player){player.stopVideo();}")
+        isPlaying = false
+        nowPlayingTitle = nil
     }
+
+    // MARK: WKScriptMessageHandler
+
+    func userContentController(_ uc: WKUserContentController, didReceive message: WKScriptMessage) {
+        guard let body = message.body as? [String: Any], let type = body["type"] as? String else { return }
+        switch type {
+        case "ready":
+            ready = true
+            flushPending()
+        case "state":
+            if let s = body["state"] as? Int { isPlaying = (s == 1) }
+        case "title":
+            if let t = body["title"] as? String, !t.isEmpty { nowPlayingTitle = t }
+        default:
+            break
+        }
+    }
+
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        // Shell loaded; the IFrame API "ready" bridge message will flip `ready`.
+    }
+
+    // MARK: Internals
+
+    private func flushPending() {
+        switch pending {
+        case .video(let id): evaluate("loadVideo('\(id)')")
+        case .playlist(let id): evaluate("loadList('\(id)')")
+        case .none: break
+        }
+        pending = nil
+    }
+
+    private func evaluate(_ js: String) {
+        webView.evaluateJavaScript(js, completionHandler: nil)
+    }
+
+    private func loadPlayerShell() {
+        webView.loadHTMLString(Self.playerHTML, baseURL: URL(string: "https://www.youtube.com"))
+    }
+
+    private static let playerHTML = """
+    <!DOCTYPE html><html><head>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>html,body{margin:0;height:100%;background:#000;overflow:hidden}#p{width:100%;height:100%}</style>
+    </head><body>
+    <div id="p"></div>
+    <script src="https://www.youtube.com/iframe_api"></script>
+    <script>
+    var player, ready=false;
+    function post(m){ try{ window.webkit.messageHandlers.bridge.postMessage(m); }catch(e){} }
+    function onYouTubeIframeAPIReady(){
+      player = new YT.Player('p', {
+        width:'100%', height:'100%',
+        playerVars:{ autoplay:0, playsinline:1, controls:1, rel:0, modestbranding:1 },
+        events:{
+          onReady:function(){ ready=true; post({type:'ready'}); },
+          onStateChange:function(e){
+            post({type:'state', state:e.data});
+            if(e.data===1){ var d=player.getVideoData?player.getVideoData():null; post({type:'title', title:d?d.title:''}); }
+          },
+          onError:function(e){ post({type:'error', code:e.data}); }
+        }
+      });
+    }
+    // Try to start with sound; if the platform blocks unmuted autoplay, fall back
+    // to muted autoplay so the station always starts.
+    function ensurePlay(){
+      if(!player) return;
+      player.playVideo();
+      setTimeout(function(){
+        try{ if(player.getPlayerState && player.getPlayerState()!==1){ player.mute(); player.playVideo(); } }catch(e){}
+      }, 1200);
+    }
+    function loadVideo(id){ if(player&&player.loadVideoById){ player.loadVideoById(id); ensurePlay(); } }
+    function loadList(id){ if(player&&player.loadPlaylist){ player.loadPlaylist({list:id, listType:'playlist'}); ensurePlay(); } }
+    window.player = null;
+    document.addEventListener('DOMContentLoaded', function(){ window.player = player; });
+    </script>
+    </body></html>
+    """
 }
 
 /// SwiftUI wrapper that renders the controller's persistent web view.

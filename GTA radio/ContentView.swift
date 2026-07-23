@@ -8,6 +8,8 @@ import SwiftUI
 struct ContentView: View {
     @ObservedObject private var app = AppState.shared
     @ObservedObject private var store = AppState.shared.store
+    @ObservedObject private var settings = SettingsStore.shared
+    @ObservedObject private var playerCtl = AppState.shared.player
     private var player: YouTubePlayerController { app.player }
     @State private var pasteSlot: Int?
     @State private var pasteText = ""
@@ -46,23 +48,59 @@ struct ContentView: View {
 
     private var playerBar: some View {
         ZStack {
-            if app.nowPlaying != nil {
-                YouTubePlayerView(controller: player)
-            } else {
+            // The web view stays mounted the whole time so audio keeps playing.
+            // When audio-only, we simply cover it with station artwork.
+            YouTubePlayerView(controller: player)
+                .opacity(app.nowPlaying == nil ? 0 : 1)
+
+            if app.nowPlaying == nil {
                 Rectangle().fill(.black)
-                    .overlay(Text("Press ⌥R for the radio dial, or pick a station")
+                    .overlay(Text("Press \(settings.shortcutDescription) for the radio dial, or pick a station")
                         .foregroundStyle(.secondary))
+            } else if settings.audioOnly, let id = app.nowPlaying {
+                artwork(for: store.stations[id])
             }
         }
         .frame(height: 240)
         .overlay(alignment: .topLeading) {
             if let id = app.nowPlaying {
-                Text(store.stations[id].displayName)
-                    .font(.headline).foregroundStyle(.white)
-                    .padding(8).background(.black.opacity(0.5)).cornerRadius(6)
-                    .padding(8)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(store.stations[id].displayName)
+                        .font(.headline).foregroundStyle(.white)
+                    if let t = playerCtl.nowPlayingTitle {
+                        Text(t).font(.caption).foregroundStyle(.white.opacity(0.75)).lineLimit(1)
+                    }
+                }
+                .padding(8).background(.black.opacity(0.5)).cornerRadius(6)
+                .padding(8)
             }
         }
+    }
+
+    /// Full-bleed blurred artwork with a crisp centered thumbnail — the
+    /// audio-only "album art" view.
+    private func artwork(for station: Station) -> some View {
+        ZStack {
+            if let t = station.thumbnailURL, let url = URL(string: t) {
+                AsyncImage(url: url) { img in
+                    img.resizable().aspectRatio(contentMode: .fill)
+                } placeholder: { Color.black }
+                .blur(radius: 40)
+                .overlay(Color.black.opacity(0.35))
+
+                AsyncImage(url: url) { img in
+                    img.resizable().aspectRatio(contentMode: .fill)
+                } placeholder: { Color.black }
+                .frame(width: 150, height: 150)
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .shadow(radius: 12)
+            } else {
+                Color.black
+                Image(systemName: "antenna.radiowaves.left.and.right")
+                    .font(.system(size: 48)).foregroundStyle(.white.opacity(0.8))
+            }
+        }
+        .clipped()
     }
 
     // MARK: Actions
@@ -152,6 +190,7 @@ struct StationTile: View {
                     AsyncImage(url: url) { img in
                         img.resizable().aspectRatio(contentMode: .fill)
                     } placeholder: { Color.black }
+                    .frame(height: 90)
                     .clipShape(RoundedRectangle(cornerRadius: 10))
                 } else if station.isEmpty {
                     Image(systemName: "plus").font(.title).foregroundStyle(.secondary)

@@ -64,11 +64,12 @@ final class RadioStore: ObservableObject {
         persist()
 
         // Best-effort async metadata (no key). Never blocks, never overwrites custom.
+        // We keep our own mqdefault thumbnail (16:9, no letterbox) rather than
+        // oEmbed's hqdefault (4:3 with black bars).
         if case .video(let id) = source,
            let meta = try? await OEmbed.fetch(videoID: id) {
             guard !stations[slot].customName, stations[slot].source == source else { return }
             stations[slot].name = Self.stationName(fromCreator: meta.authorName)
-            if let t = meta.thumbnailURL { stations[slot].thumbnailURL = t.absoluteString }
             persist()
         }
     }
@@ -103,7 +104,8 @@ final class RadioStore: ObservableObject {
 
     private func thumbnail(for source: StationSource) -> String? {
         switch source {
-        case .video(let id): return "https://i.ytimg.com/vi/\(id)/hqdefault.jpg"
+        // mqdefault is native 16:9 (no black bars); fills a circle cleanly.
+        case .video(let id): return "https://i.ytimg.com/vi/\(id)/mqdefault.jpg"
         case .playlist: return nil
         }
     }

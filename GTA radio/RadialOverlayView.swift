@@ -2,8 +2,9 @@
 //  RadialOverlayView.swift
 //  GTA radio
 //
-//  The GTA-style radio dial: 26 stations arranged on a circle. Hover to
-//  preview in the center, click to tune in. Esc or a background click closes.
+//  The GTA-style radio dial: 26 stations arranged on a circle. Populated
+//  stations are crisp and clickable; empty slots are dimmed and inert.
+//  Hover to preview in the center, click to tune. Esc / background click closes.
 //
 
 import SwiftUI
@@ -14,6 +15,7 @@ struct RadialOverlayView: View {
 
     @ObservedObject private var store = AppState.shared.store
     @ObservedObject private var app = AppState.shared
+    @ObservedObject private var settings = SettingsStore.shared
     @State private var hovered: Int?
 
     var body: some View {
@@ -22,14 +24,12 @@ struct RadialOverlayView: View {
             let radius = min(geo.size.width, geo.size.height) * 0.40
 
             ZStack {
-                // Dim backdrop — click anywhere empty to dismiss.
-                Color.black.opacity(0.55)
+                Color.black.opacity(settings.backgroundOpacity)
                     .ignoresSafeArea()
                     .contentShape(Rectangle())
                     .onTapGesture { onClose() }
 
-                centerPanel
-                    .position(center)
+                centerPanel.position(center)
 
                 ForEach(store.stations) { station in
                     let angle = Double(station.id) / Double(RadioStore.slotCount) * 2 * .pi - .pi / 2
@@ -38,9 +38,12 @@ struct RadialOverlayView: View {
                                 isHovered: hovered == station.id)
                         .position(x: center.x + radius * cos(angle),
                                   y: center.y + radius * sin(angle))
-                        .onHover { hovered = $0 ? station.id : (hovered == station.id ? nil : hovered) }
+                        .onHover { inside in
+                            guard !station.isEmpty else { return }   // empties never highlight
+                            hovered = inside ? station.id : (hovered == station.id ? nil : hovered)
+                        }
                         .onTapGesture {
-                            guard !station.isEmpty else { return }
+                            guard !station.isEmpty else { return }   // empties are non-selectable
                             onSelect(station.id)
                         }
                 }
@@ -68,6 +71,11 @@ struct RadialOverlayView: View {
                     .foregroundStyle(.white)
                     .multilineTextAlignment(.center)
                     .lineLimit(2)
+                if let t = app.player.nowPlayingTitle, app.nowPlaying == s.id {
+                    Text(t)
+                        .font(.system(size: 13)).foregroundStyle(.white.opacity(0.7))
+                        .lineLimit(1).frame(width: 240)
+                }
                 Text(app.nowPlaying == s.id ? "▶ Now Playing" : "Click to tune in")
                     .font(.system(size: 13, weight: .medium))
                     .foregroundStyle(app.nowPlaying == s.id ? .green : .white.opacity(0.6))
@@ -77,7 +85,7 @@ struct RadialOverlayView: View {
                     .foregroundStyle(.white.opacity(0.5))
             }
         }
-        .frame(width: 220)
+        .frame(width: 240)
     }
 }
 
@@ -86,18 +94,19 @@ private struct StationNode: View {
     let isCurrent: Bool
     let isHovered: Bool
 
-    private var diameter: CGFloat { isHovered ? 72 : 60 }
+    private var diameter: CGFloat { isHovered ? 74 : 60 }
 
     var body: some View {
         ZStack {
-            Circle().fill(station.isEmpty ? Color.white.opacity(0.06) : Color.black)
+            Circle().fill(station.isEmpty ? Color.white.opacity(0.05) : Color.black)
             if let t = station.thumbnailURL, let url = URL(string: t) {
                 AsyncImage(url: url) { img in
                     img.resizable().aspectRatio(contentMode: .fill)
                 } placeholder: { Color.black }
+                .frame(width: diameter, height: diameter)   // fill + clip → no black bars
                 .clipShape(Circle())
             } else if station.isEmpty {
-                Image(systemName: "plus").foregroundStyle(.white.opacity(0.25))
+                Image(systemName: "plus").foregroundStyle(.white.opacity(0.2))
             } else {
                 Image(systemName: "antenna.radiowaves.left.and.right")
                     .foregroundStyle(.white)
@@ -105,11 +114,17 @@ private struct StationNode: View {
         }
         .frame(width: diameter, height: diameter)
         .overlay(
-            Circle().stroke(isCurrent ? Color.green : (isHovered ? Color.white : Color.white.opacity(0.15)),
-                            lineWidth: isCurrent ? 3 : (isHovered ? 3 : 1))
+            Circle().stroke(strokeColor, lineWidth: isCurrent ? 3 : (isHovered ? 3 : 1))
         )
         .shadow(color: .black.opacity(0.5), radius: isHovered ? 10 : 4)
         .animation(.spring(response: 0.25, dampingFraction: 0.7), value: isHovered)
-        .opacity(station.isEmpty ? 0.5 : 1)
+        // Populated = crisp; empty = dimmed and clearly inert.
+        .opacity(station.isEmpty ? 0.28 : 1)
+    }
+
+    private var strokeColor: Color {
+        if isCurrent { return .green }
+        if isHovered { return .white }
+        return .white.opacity(0.15)
     }
 }
