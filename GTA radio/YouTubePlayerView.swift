@@ -7,6 +7,11 @@
 //  it with loadVideoById / loadPlaylist. The web view is created once and kept
 //  alive so audio keeps playing while the UI (and overlay) come and go.
 //
+//  NOTE: the player HTML is loaded with baseURL `http://localhost`. YouTube
+//  rejects an embed whose page origin is youtube.com itself (IFrame error 152);
+//  a localhost origin is a valid embedding referrer and plays unmuted. This is
+//  the same approach Google's youtube-ios-player-helper uses.
+//
 
 import SwiftUI
 import WebKit
@@ -17,6 +22,7 @@ final class YouTubePlayerController: NSObject, ObservableObject, WKScriptMessage
 
     @Published var isPlaying = false
     @Published var nowPlayingTitle: String?
+    @Published var lastErrorCode: Int?
 
     private var ready = false
     private enum Pending { case video(String), playlist(String) }
@@ -43,17 +49,19 @@ final class YouTubePlayerController: NSObject, ObservableObject, WKScriptMessage
     // MARK: Public controls
 
     func playVideo(_ id: String) {
+        lastErrorCode = nil
         if ready { evaluate("loadVideo('\(id)')") } else { pending = .video(id) }
     }
 
     func playPlaylist(_ id: String) {
+        lastErrorCode = nil
         if ready { evaluate("loadList('\(id)')") } else { pending = .playlist(id) }
     }
 
-    func pause() { evaluate("if(window.player)player.pauseVideo();") }
-    func resume() { evaluate("if(window.player)player.playVideo();") }
+    func pause() { evaluate("if(window.player)window.player.pauseVideo();") }
+    func resume() { evaluate("if(window.player)window.player.playVideo();") }
     func stop() {
-        evaluate("if(window.player){player.stopVideo();}")
+        evaluate("if(window.player)window.player.stopVideo();")
         isPlaying = false
         nowPlayingTitle = nil
     }
@@ -67,9 +75,14 @@ final class YouTubePlayerController: NSObject, ObservableObject, WKScriptMessage
             ready = true
             flushPending()
         case "state":
-            if let s = body["state"] as? Int { isPlaying = (s == 1) }
+            if let s = body["state"] as? Int {
+                isPlaying = (s == 1)
+                if s == 1 { lastErrorCode = nil }
+            }
         case "title":
             if let t = body["title"] as? String, !t.isEmpty { nowPlayingTitle = t }
+        case "error":
+            if let code = body["code"] as? Int { lastErrorCode = code }
         default:
             break
         }
@@ -95,7 +108,7 @@ final class YouTubePlayerController: NSObject, ObservableObject, WKScriptMessage
     }
 
     private func loadPlayerShell() {
-        webView.loadHTMLString(Self.playerHTML, baseURL: URL(string: "https://www.youtube.com"))
+        webView.loadHTMLString(Self.playerHTML, baseURL: URL(string: "http://localhost"))
     }
 
     private static let playerHTML = """
@@ -104,7 +117,6 @@ final class YouTubePlayerController: NSObject, ObservableObject, WKScriptMessage
     <style>html,body{margin:0;height:100%;background:#000;overflow:hidden}#p{width:100%;height:100%}</style>
     </head><body>
     <div id="p"></div>
-    <script src="https://www.youtube.com/iframe_api"></script>
     <script>
     var player, ready=false;
     function post(m){ try{ window.webkit.messageHandlers.bridge.postMessage(m); }catch(e){} }
@@ -113,7 +125,7 @@ final class YouTubePlayerController: NSObject, ObservableObject, WKScriptMessage
         width:'100%', height:'100%',
         playerVars:{ autoplay:0, playsinline:1, controls:1, rel:0, modestbranding:1 },
         events:{
-          onReady:function(){ ready=true; post({type:'ready'}); },
+          onReady:function(){ ready=true; window.player=player; post({type:'ready'}); },
           onStateChange:function(e){
             post({type:'state', state:e.data});
             if(e.data===1){ var d=player.getVideoData?player.getVideoData():null; post({type:'title', title:d?d.title:''}); }
@@ -122,19 +134,13 @@ final class YouTubePlayerController: NSObject, ObservableObject, WKScriptMessage
         }
       });
     }
-    // Try to start with sound; if the platform blocks unmuted autoplay, fall back
-    // to muted autoplay so the station always starts.
     function ensurePlay(){
       if(!player) return;
-      player.playVideo();
-      setTimeout(function(){
-        try{ if(player.getPlayerState && player.getPlayerState()!==1){ player.mute(); player.playVideo(); } }catch(e){}
-      }, 1200);
+      player.unMute(); player.setVolume(100); player.playVideo();
     }
     function loadVideo(id){ if(player&&player.loadVideoById){ player.loadVideoById(id); ensurePlay(); } }
     function loadList(id){ if(player&&player.loadPlaylist){ player.loadPlaylist({list:id, listType:'playlist'}); ensurePlay(); } }
-    window.player = null;
-    document.addEventListener('DOMContentLoaded', function(){ window.player = player; });
+    var s=document.createElement('script'); s.src='https://www.youtube.com/iframe_api'; document.head.appendChild(s);
     </script>
     </body></html>
     """
