@@ -6,9 +6,9 @@
 import SwiftUI
 
 struct ContentView: View {
-    @StateObject private var store = RadioStore()
-    @StateObject private var player = YouTubePlayerController()
-    @State private var nowPlaying: Int?
+    @ObservedObject private var app = AppState.shared
+    @ObservedObject private var store = AppState.shared.store
+    private var player: YouTubePlayerController { app.player }
     @State private var pasteSlot: Int?
     @State private var pasteText = ""
     @State private var renameSlot: Int?
@@ -23,7 +23,7 @@ struct ContentView: View {
             ScrollView {
                 LazyVGrid(columns: columns, spacing: 12) {
                     ForEach(store.stations) { station in
-                        StationTile(station: station, isPlaying: nowPlaying == station.id)
+                        StationTile(station: station, isPlaying: app.nowPlaying == station.id)
                             .onTapGesture { tap(station) }
                             .contextMenu { menu(for: station) }
                     }
@@ -46,16 +46,17 @@ struct ContentView: View {
 
     private var playerBar: some View {
         ZStack {
-            if nowPlaying != nil {
+            if app.nowPlaying != nil {
                 YouTubePlayerView(controller: player)
             } else {
                 Rectangle().fill(.black)
-                    .overlay(Text("Select a station").foregroundStyle(.secondary))
+                    .overlay(Text("Press ⌥R for the radio dial, or pick a station")
+                        .foregroundStyle(.secondary))
             }
         }
         .frame(height: 240)
         .overlay(alignment: .topLeading) {
-            if let id = nowPlaying {
+            if let id = app.nowPlaying {
                 Text(store.stations[id].displayName)
                     .font(.headline).foregroundStyle(.white)
                     .padding(8).background(.black.opacity(0.5)).cornerRadius(6)
@@ -76,12 +77,7 @@ struct ContentView: View {
     }
 
     private func play(_ station: Station) {
-        switch station.source {
-        case .video(let id): player.playVideo(id)
-        case .playlist(let id): player.playPlaylist(id)
-        case .none: return
-        }
-        nowPlaying = station.id
+        app.play(station)
     }
 
     @ViewBuilder
@@ -91,7 +87,7 @@ struct ContentView: View {
             Button("Rename…") { renameText = station.displayName; renameSlot = station.id }
             Divider()
             Button("Clear", role: .destructive) {
-                if nowPlaying == station.id { player.stop(); nowPlaying = nil }
+                if app.nowPlaying == station.id { app.stop() }
                 store.clear(slot: station.id)
             }
         } else {
