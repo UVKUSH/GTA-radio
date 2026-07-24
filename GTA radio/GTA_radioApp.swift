@@ -20,10 +20,34 @@ struct GTA_radioApp: App {
                 }
                 .keyboardShortcut("r", modifiers: .option)
             }
+            WheelsCommands(store: AppState.shared.store)
         }
 
         Settings {
             SettingsView()
+        }
+    }
+}
+
+/// "Wheels" menu: ⌘1–9 hot-swaps between the first nine saved wheels.
+/// Lives in the menu bar so the shortcuts work anywhere in the app and the
+/// number mapping stays discoverable.
+struct WheelsCommands: Commands {
+    @ObservedObject var store: RadioStore
+
+    var body: some Commands {
+        CommandMenu("Wheels") {
+            if store.presets.isEmpty {
+                Text("No saved wheels yet")
+            } else {
+                ForEach(Array(store.presets.prefix(9).enumerated()), id: \.element.id) { i, preset in
+                    Button("Load “\(preset.name)”") {
+                        store.loadPreset(preset)
+                        AppState.shared.goHome()
+                    }
+                    .keyboardShortcut(KeyEquivalent(Character("\(i + 1)")), modifiers: .command)
+                }
+            }
         }
     }
 }
