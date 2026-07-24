@@ -42,7 +42,7 @@
 **Interfaces:**
 - Produces: `enum CoachTarget: Hashable { case stations, wheels, settings }`; `struct CoachAnchorKey: PreferenceKey` with `static defaultValue: [CoachTarget: Anchor<CGRect>] = [:]`; `extension View { func coachAnchor(_ target: CoachTarget) -> some View }`.
 
-- [ ] **Step 1: Create the file with the anchor primitives**
+- [x] **Step 1: Create the file with the anchor primitives**
 
 ```swift
 //
@@ -78,12 +78,12 @@ extension View {
 }
 ```
 
-- [ ] **Step 2: Build to verify it compiles**
+- [x] **Step 2: Build to verify it compiles**
 
 Run: `xcodebuild -project "GTA radio.xcodeproj" -scheme "GTA radio" -destination 'platform=macOS' build 2>&1 | grep -E "BUILD (SUCCEEDED|FAILED)|error:"`
 Expected: `** BUILD SUCCEEDED **`
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add "GTA radio/OnboardingOverlay.swift"
