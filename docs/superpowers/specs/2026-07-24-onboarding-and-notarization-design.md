@@ -44,13 +44,16 @@ Settings is its own window/scene, so it can't toggle main-window state directly.
 - Both live in a Settings section (e.g. "Getting started" / under Appearance).
 
 ### 2.3 Coach-mark mechanism (robust, non-interactive)
-- `enum CoachTarget { case dial, wheels, settings }` (extensible).
+- `enum CoachTarget { case stations, wheels, settings }` (extensible).
 - `CoachAnchorKey: PreferenceKey` collecting `[CoachTarget: Anchor<CGRect>]`.
 - `.coachAnchor(_:)` view modifier publishes a view's bounds via `anchorPreference`.
 - Real views tagged in `ContentView`:
-  - dial container → `.dial`
+  - the `filmstrip` station strip → `.stations`
   - steering-wheel `HUDIconButton` → `.wheels`
   - gear `HUDIconButton` → `.settings`
+- NOTE: the radial **dial** is a separate ⌥R overlay window (`OverlayWindowController`),
+  not part of the main window — so onboarding anchors the main-window filmstrip and
+  teaches the dial itself via the ⌥R step (4).
 - `OnboardingOverlay` is attached with `.overlayPreferenceValue(CoachAnchorKey.self)`
   wrapped in a `GeometryReader` (inside `RootView`, around `ContentView`) so anchors
   resolve to overlay coordinates.
@@ -68,11 +71,12 @@ Settings is its own window/scene, so it can't toggle main-window state directly.
 ### 2.4 Steps (6)
 1. **Welcome** — centered. Headline **"Wasted FM"**, tagline **"GTA Radio"**,
    one line: "Your personal radio, built from any YouTube link."
-2. **The dial** — anchor `.dial`: "Click a station to tune in — 26 slots per wheel."
-3. **Add anything** — anchor `.dial`: "Click an empty slot to paste any YouTube
+2. **Your stations** — anchor `.stations`: "Click a station to tune in — 26 slots
+   per wheel."
+3. **Add anything** — anchor `.stations`: "Click an empty slot to paste any YouTube
    video *or* playlist. No API key, no sign-in."
-4. **Pop it anywhere** — centered: "Press ⌥R anywhere on your Mac to summon the dial
-   over any app." (global hotkey has no on-screen element to point at)
+4. **Pop it anywhere** — centered: "Press ⌥R anywhere on your Mac to summon the radial
+   dial over any app." (global hotkey / overlay window — no element to point at)
 5. **Wheels** — anchor `.wheels`: "Save whole 26-station layouts as Wheels — switch
    with ⌘1–9."
 6. **Settings** — anchor `.settings`: "Audio-only mode, custom hotkey, and appearance
