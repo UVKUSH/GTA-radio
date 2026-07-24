@@ -26,12 +26,21 @@ struct Station: Codable, Equatable, Identifiable {
     var displayName: String { name ?? (isEmpty ? "Empty" : "YouTube Radio") }
 }
 
+/// Where a station was last playing, so it resumes instead of restarting.
+struct Resume: Codable, Equatable {
+    var seconds: Double
+    var index: Int   // playlist index (-1 / 0 for single videos)
+}
+
 @MainActor
 final class RadioStore: ObservableObject {
     static let slotCount = 26
     @Published private(set) var stations: [Station]
 
     private let saveURL: URL
+    private let resumeURL: URL
+    // Kept out of @Published so frequent position saves don't redraw the grid.
+    private var resumes: [Int: Resume]
 
     init() {
         let dir = FileManager.default
@@ -39,6 +48,7 @@ final class RadioStore: ObservableObject {
             .appendingPathComponent("GTARadio", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         saveURL = dir.appendingPathComponent("stations.json")
+        resumeURL = dir.appendingPathComponent("resumes.json")
 
         if let data = try? Data(contentsOf: saveURL),
            let loaded = try? JSONDecoder().decode([Station].self, from: data),
@@ -46,6 +56,24 @@ final class RadioStore: ObservableObject {
             stations = loaded
         } else {
             stations = (0..<Self.slotCount).map { Station(id: $0) }
+        }
+
+        if let data = try? Data(contentsOf: resumeURL),
+           let loaded = try? JSONDecoder().decode([Int: Resume].self, from: data) {
+            resumes = loaded
+        } else {
+            resumes = [:]
+        }
+    }
+
+    // MARK: Resume positions
+
+    func resume(for slot: Int) -> Resume? { resumes[slot] }
+
+    func setResume(_ resume: Resume, forSlot slot: Int) {
+        resumes[slot] = resume
+        if let data = try? JSONEncoder().encode(resumes) {
+            try? data.write(to: resumeURL)
         }
     }
 
@@ -61,6 +89,8 @@ final class RadioStore: ObservableObject {
         station.name = provisionalName(for: source)
         station.thumbnailURL = thumbnail(for: source)
         stations[slot] = station
+        resumes[slot] = nil   // a freshly assigned station starts at the beginning
+        if let data = try? JSONEncoder().encode(resumes) { try? data.write(to: resumeURL) }
         persist()
 
         // Best-effort async metadata (no key). Never blocks, never overwrites custom.
@@ -84,6 +114,8 @@ final class RadioStore: ObservableObject {
 
     func clear(slot: Int) {
         stations[slot] = Station(id: slot)
+        resumes[slot] = nil
+        if let data = try? JSONEncoder().encode(resumes) { try? data.write(to: resumeURL) }
         persist()
     }
 

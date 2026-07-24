@@ -13,7 +13,7 @@ struct SettingsView: View {
 
     var body: some View {
         Form {
-            Section("Radio Dial Hotkey") {
+            Section {
                 HStack {
                     Toggle("⌃", isOn: $settings.modControl)
                     Toggle("⌥", isOn: $settings.modOption)
@@ -30,17 +30,23 @@ struct SettingsView: View {
                 .toggleStyle(.button)
                 Text("Current: \(settings.shortcutDescription)")
                     .font(.caption).foregroundStyle(.secondary)
+            } header: {
+                Label("Radio Dial Hotkey", systemImage: "dial.medium.fill")
             }
 
-            Section("Appearance") {
+            Section {
                 VStack(alignment: .leading) {
                     Text("Overlay background opacity: \(Int(settings.backgroundOpacity * 100))%")
                     Slider(value: $settings.backgroundOpacity, in: 0.15...0.95)
                 }
+            } header: {
+                Label("Appearance", systemImage: "paintbrush.fill")
             }
 
-            Section("Playback") {
+            Section {
                 Toggle("Audio only (hide video, show artwork)", isOn: $settings.audioOnly)
+            } header: {
+                Label("Playback", systemImage: "play.circle.fill")
             }
         }
         .formStyle(.grouped)

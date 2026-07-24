@@ -61,31 +61,37 @@ struct RadialOverlayView: View {
     }
 
     private var centerPanel: some View {
-        VStack(spacing: 8) {
-            Text("GTA RADIO")
-                .font(.system(size: 13, weight: .heavy)).tracking(4)
-                .foregroundStyle(.white.opacity(0.5))
+        VStack(spacing: 10) {
+            HStack(spacing: 6) {
+                Text("GTA").font(.gtaDisplay(15)).foregroundStyle(Theme.bone.opacity(0.7))
+                Text("RADIO").font(.gtaDisplay(15)).foregroundStyle(Theme.magenta.opacity(0.9))
+            }
             if let s = focusStation, !s.isEmpty {
                 Text(s.displayName)
-                    .font(.system(size: 26, weight: .bold))
-                    .foregroundStyle(.white)
+                    .font(.gtaDisplay(30))
+                    .foregroundStyle(Theme.bone)
                     .multilineTextAlignment(.center)
                     .lineLimit(2)
                 if let t = app.player.nowPlayingTitle, app.nowPlaying == s.id {
                     Text(t)
-                        .font(.system(size: 13)).foregroundStyle(.white.opacity(0.7))
+                        .font(.system(size: 12)).foregroundStyle(Theme.muted)
                         .lineLimit(1).frame(width: 240)
                 }
-                Text(app.nowPlaying == s.id ? "▶ Now Playing" : "Click to tune in")
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(app.nowPlaying == s.id ? .green : .white.opacity(0.6))
+                Text(app.nowPlaying == s.id ? "▶ NOW PLAYING · \(Theme.frequency(for: s.id)) FM" : "CLICK TO TUNE IN")
+                    .font(.gtaMono(10)).tracking(1)
+                    .foregroundStyle(app.nowPlaying == s.id ? Theme.teal : Theme.muted)
             } else {
                 Text("Hover a station")
-                    .font(.system(size: 18, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.5))
+                    .font(.system(size: 17, weight: .medium))
+                    .foregroundStyle(Theme.muted)
+            }
+
+            if app.nowPlaying != nil {
+                TransportControls(showsVolume: true, playSize: 40)
+                    .padding(.top, 6)
             }
         }
-        .frame(width: 240)
+        .frame(width: 300)
     }
 }
 

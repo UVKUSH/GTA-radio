@@ -44,6 +44,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         SettingsStore.shared.onHotKeyChange = { [weak self] in self?.applyHotKey() }
     }
 
+    func applicationWillTerminate(_ notification: Notification) {
+        MainActor.assumeIsolated { AppState.shared.commitCurrent() }
+    }
+
     private func applyHotKey() {
         let s = SettingsStore.shared
         hotKey.register(keyCode: UInt32(s.hotKeyCode), modifiers: s.carbonModifiers)

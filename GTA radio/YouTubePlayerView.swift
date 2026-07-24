@@ -23,9 +23,11 @@ final class YouTubePlayerController: NSObject, ObservableObject, WKScriptMessage
     @Published var isPlaying = false
     @Published var nowPlayingTitle: String?
     @Published var lastErrorCode: Int?
+    @Published var currentTime: Double = 0
+    @Published var currentIndex: Int = -1   // playlist index, -1 if not a playlist
 
     private var ready = false
-    private enum Pending { case video(String), playlist(String) }
+    private enum Pending { case video(String, Double), playlist(String, Int, Double) }
     private var pending: Pending?
 
     override init() {
@@ -46,24 +48,39 @@ final class YouTubePlayerController: NSObject, ObservableObject, WKScriptMessage
         loadPlayerShell()
     }
 
-    // MARK: Public controls
+    // MARK: Load
 
-    func playVideo(_ id: String) {
+    func playVideo(_ id: String, startSeconds: Double = 0) {
         lastErrorCode = nil
-        if ready { evaluate("loadVideo('\(id)')") } else { pending = .video(id) }
+        currentIndex = -1
+        if ready { evaluate("loadVideo('\(id)',\(startSeconds))") }
+        else { pending = .video(id, startSeconds) }
     }
 
-    func playPlaylist(_ id: String) {
+    func playPlaylist(_ id: String, index: Int = 0, startSeconds: Double = 0) {
         lastErrorCode = nil
-        if ready { evaluate("loadList('\(id)')") } else { pending = .playlist(id) }
+        if ready { evaluate("loadList('\(id)',\(index),\(startSeconds))") }
+        else { pending = .playlist(id, index, startSeconds) }
     }
 
-    func pause() { evaluate("if(window.player)window.player.pauseVideo();") }
-    func resume() { evaluate("if(window.player)window.player.playVideo();") }
+    // MARK: Transport
+
+    func play() { evaluate("ctl('play')") }
+    func pause() { evaluate("ctl('pause')") }
+    func togglePlayPause() { isPlaying ? pause() : play() }
+    func next() { evaluate("ctl('next')") }
+    func previous() { evaluate("ctl('prev')") }
+    func setShuffle(_ on: Bool) { evaluate("ctl('shuffle',\(on))") }
+    func setVolume(_ v: Int) { evaluate("ctl('vol',\(v))") }
+    func mute() { evaluate("ctl('mute')") }
+    func unmute() { evaluate("ctl('unmute')") }
+
     func stop() {
-        evaluate("if(window.player)window.player.stopVideo();")
+        evaluate("ctl('stop')")
         isPlaying = false
         nowPlayingTitle = nil
+        currentTime = 0
+        currentIndex = -1
     }
 
     // MARK: WKScriptMessageHandler
@@ -81,6 +98,9 @@ final class YouTubePlayerController: NSObject, ObservableObject, WKScriptMessage
             }
         case "title":
             if let t = body["title"] as? String, !t.isEmpty { nowPlayingTitle = t }
+        case "time":
+            if let t = body["t"] as? Double { currentTime = t }
+            if let i = body["idx"] as? Int { currentIndex = i }
         case "error":
             if let code = body["code"] as? Int { lastErrorCode = code }
         default:
@@ -88,16 +108,14 @@ final class YouTubePlayerController: NSObject, ObservableObject, WKScriptMessage
         }
     }
 
-    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-        // Shell loaded; the IFrame API "ready" bridge message will flip `ready`.
-    }
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {}
 
     // MARK: Internals
 
     private func flushPending() {
         switch pending {
-        case .video(let id): evaluate("loadVideo('\(id)')")
-        case .playlist(let id): evaluate("loadList('\(id)')")
+        case .video(let id, let s): evaluate("loadVideo('\(id)',\(s))")
+        case .playlist(let id, let i, let s): evaluate("loadList('\(id)',\(i),\(s))")
         case .none: break
         }
         pending = nil
@@ -120,12 +138,18 @@ final class YouTubePlayerController: NSObject, ObservableObject, WKScriptMessage
     <script>
     var player, ready=false;
     function post(m){ try{ window.webkit.messageHandlers.bridge.postMessage(m); }catch(e){} }
+    function startTimer(){
+      if(window._t) return;
+      window._t = setInterval(function(){
+        try{ post({type:'time', t:player.getCurrentTime(), idx:(player.getPlaylistIndex?player.getPlaylistIndex():-1)}); }catch(e){}
+      }, 1000);
+    }
     function onYouTubeIframeAPIReady(){
       player = new YT.Player('p', {
         width:'100%', height:'100%',
         playerVars:{ autoplay:0, playsinline:1, controls:1, rel:0, modestbranding:1 },
         events:{
-          onReady:function(){ ready=true; window.player=player; post({type:'ready'}); },
+          onReady:function(){ ready=true; window.player=player; startTimer(); post({type:'ready'}); },
           onStateChange:function(e){
             post({type:'state', state:e.data});
             if(e.data===1){ var d=player.getVideoData?player.getVideoData():null; post({type:'title', title:d?d.title:''}); }
@@ -134,12 +158,23 @@ final class YouTubePlayerController: NSObject, ObservableObject, WKScriptMessage
         }
       });
     }
-    function ensurePlay(){
+    function ensurePlay(){ if(!player) return; player.unMute(); player.setVolume(100); player.playVideo(); }
+    function loadVideo(id,start){ if(player&&player.loadVideoById){ player.loadVideoById({videoId:id, startSeconds:start||0}); ensurePlay(); } }
+    function loadList(id,index,start){ if(player&&player.loadPlaylist){ player.loadPlaylist({list:id, listType:'playlist', index:index||0, startSeconds:start||0}); ensurePlay(); } }
+    function ctl(cmd,arg){
       if(!player) return;
-      player.unMute(); player.setVolume(100); player.playVideo();
+      try{
+        if(cmd==='play') player.playVideo();
+        else if(cmd==='pause') player.pauseVideo();
+        else if(cmd==='next') player.nextVideo();
+        else if(cmd==='prev') player.previousVideo();
+        else if(cmd==='shuffle') player.setShuffle(arg);
+        else if(cmd==='vol'){ player.unMute(); player.setVolume(arg); }
+        else if(cmd==='mute') player.mute();
+        else if(cmd==='unmute') player.unMute();
+        else if(cmd==='stop') player.stopVideo();
+      }catch(e){}
     }
-    function loadVideo(id){ if(player&&player.loadVideoById){ player.loadVideoById(id); ensurePlay(); } }
-    function loadList(id){ if(player&&player.loadPlaylist){ player.loadPlaylist({list:id, listType:'playlist'}); ensurePlay(); } }
     var s=document.createElement('script'); s.src='https://www.youtube.com/iframe_api'; document.head.appendChild(s);
     </script>
     </body></html>

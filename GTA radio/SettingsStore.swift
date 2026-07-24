@@ -33,7 +33,7 @@ final class SettingsStore: ObservableObject {
         modControl = defaults.object(forKey: "modControl") as? Bool ?? false
         modShift = defaults.object(forKey: "modShift") as? Bool ?? false
         backgroundOpacity = defaults.object(forKey: "backgroundOpacity") as? Double ?? 0.55
-        audioOnly = defaults.object(forKey: "audioOnly") as? Bool ?? true
+        audioOnly = defaults.object(forKey: "audioOnly") as? Bool ?? false
     }
 
     // MARK: Carbon translation
