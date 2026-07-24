@@ -102,10 +102,12 @@ struct ContentView: View {
             Spacer()
             HStack(spacing: 10) {
                 HUDIconButton(system: "steeringwheel") { showWheels = true }
+                    .coachAnchor(.wheels)
                 HUDIconButton(system: "shuffle") { app.shuffleAllStations() }
                 HUDIconButton(system: settings.audioOnly ? "waveform" : "video.fill",
                               active: !settings.audioOnly) { settings.audioOnly.toggle() }
                 HUDIconButton(system: "gearshape.fill") { openSettings() }
+                    .coachAnchor(.settings)
             }
         }
         .padding(20)
@@ -193,6 +195,7 @@ struct ContentView: View {
             .padding(.horizontal, 4).padding(.vertical, 6)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .coachAnchor(.stations)
     }
 
     // MARK: Now-playing lookup

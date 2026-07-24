@@ -29,19 +29,43 @@ struct GTA_radioApp: App {
     }
 }
 
-/// The window's root: the app UI with the launch intro layered on top.
-/// A fresh `RootView` is built each time a window opens, so the intro plays
-/// once per launch and then removes itself.
+/// The window's root: app UI with the launch intro layered on top, and the
+/// first-run welcome tour after the intro. Both are replayable from Settings.
 struct RootView: View {
+    @ObservedObject private var app = AppState.shared
+    @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
+
     @State private var showIntro = true
+    @State private var showOnboarding = false
 
     var body: some View {
         ContentView()
-            .overlay {
-                if showIntro {
-                    IntroSplashView { showIntro = false }
+            .overlayPreferenceValue(CoachAnchorKey.self) { anchors in
+                GeometryReader { proxy in
+                    ZStack {
+                        if showIntro {
+                            IntroSplashView { introFinished() }
+                        }
+                        if showOnboarding {
+                            OnboardingOverlay(anchors: anchors, proxy: proxy) {
+                                showOnboarding = false
+                                hasCompletedOnboarding = true
+                            }
+                        }
+                    }
                 }
             }
+            .onChange(of: app.replayIntro) { _, want in
+                if want { app.replayIntro = false; showOnboarding = false; showIntro = true }
+            }
+            .onChange(of: app.replayOnboarding) { _, want in
+                if want { app.replayOnboarding = false; showIntro = false; showOnboarding = true }
+            }
+    }
+
+    private func introFinished() {
+        showIntro = false
+        if !hasCompletedOnboarding { showOnboarding = true }
     }
 }
 

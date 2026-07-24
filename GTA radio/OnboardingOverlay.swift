@@ -47,6 +47,8 @@ let onboardingSteps: [OnboardingStep] = [
 ]
 
 struct OnboardingOverlay: View {
+    let anchors: [CoachTarget: Anchor<CGRect>]
+    let proxy: GeometryProxy
     var onFinish: () -> Void
     @State private var index = 0
     @State private var opacity: Double = 0
@@ -54,30 +56,16 @@ struct OnboardingOverlay: View {
     private var step: OnboardingStep { onboardingSteps[index] }
     private var isLast: Bool { index == onboardingSteps.count - 1 }
 
-    var body: some View {
-        GeometryReader { proxy in
-            // Resolve the active step's target rect (nil → centered card).
-            let overlay = overlayContent(proxy: proxy)
-            overlay
-        }
-        .ignoresSafeArea()
-        .opacity(opacity)
-        .onAppear { withAnimation(.easeOut(duration: 0.3)) { opacity = 1 } }
+    /// Resolved spotlight rect for the active step, or nil (→ centered card).
+    private var spotlight: CGRect? {
+        guard let t = step.target, let a = anchors[t] else { return nil }
+        return proxy[a].insetBy(dx: -10, dy: -10)
     }
 
-    @ViewBuilder
-    private func overlayContent(proxy: GeometryProxy) -> some View {
-        // The parent supplies anchors via .overlayPreferenceValue; this view is
-        // rendered inside that closure (see RootView), so we read them there and
-        // pass a resolved rect down. Here we just lay out scrim + callout.
+    var body: some View {
         ZStack(alignment: .topTrailing) {
-            Color.black.opacity(0.72)
-                .contentShape(Rectangle())            // eat all clicks (non-interactive app beneath)
-            calloutCard
-                .frame(maxWidth: 360)
-                .padding(24)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
-
+            scrim
+            callout
             Button("Skip", action: finish)
                 .buttonStyle(.plain)
                 .padding(.horizontal, 12).padding(.vertical, 6)
@@ -91,6 +79,50 @@ struct OnboardingOverlay: View {
                 .keyboardShortcut(.cancelAction)
                 .opacity(0).allowsHitTesting(false)
         }
+        .ignoresSafeArea()
+        .opacity(opacity)
+        .onAppear { withAnimation(.easeOut(duration: 0.3)) { opacity = 1 } }
+    }
+
+    /// Dim everything; punch a rounded hole around the spotlight rect.
+    private var scrim: some View {
+        Color.black.opacity(0.72)
+            .contentShape(Rectangle())
+            .mask {
+                ZStack {
+                    Rectangle()
+                    if let r = spotlight {
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .frame(width: r.width, height: r.height)
+                            .position(x: r.midX, y: r.midY)
+                            .blendMode(.destinationOut)
+                    }
+                }
+                .compositingGroup()
+            }
+            .animation(.easeInOut(duration: 0.25), value: index)
+    }
+
+    /// Callout: near the spotlight (below, or above if low); centered if none.
+    @ViewBuilder private var callout: some View {
+        if let r = spotlight {
+            calloutCard
+                .frame(maxWidth: 340)
+                .position(calloutPosition(for: r))
+                .animation(.easeInOut(duration: 0.25), value: index)
+        } else {
+            calloutCard
+                .frame(maxWidth: 360)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+        }
+    }
+
+    private func calloutPosition(for r: CGRect) -> CGPoint {
+        let size = proxy.size
+        let below = r.maxY + 90
+        let y = below + 60 < size.height ? below : r.minY - 90
+        let x = min(max(r.midX, 190), size.width - 190)
+        return CGPoint(x: x, y: y)
     }
 
     private var calloutCard: some View {
