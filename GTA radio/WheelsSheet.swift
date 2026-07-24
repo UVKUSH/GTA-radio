@@ -146,8 +146,7 @@ private struct PresetRow: View {
                             .background(Theme.teal.opacity(0.85), in: Capsule())
                             .foregroundStyle(.black)
                     }
-                    Text("\(filledCount) stations · saved ")
-                    + Text(preset.savedAt, format: .relative(presentation: .named))
+                    Text("\(filledCount) stations · saved \(preset.savedAt, format: .relative(presentation: .named))")
                 }
                 .font(.caption).foregroundStyle(.secondary)
             }

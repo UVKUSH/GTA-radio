@@ -72,6 +72,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         MainActor.assumeIsolated { AppState.shared.commitCurrent() }
     }
 
+    /// Coming back to the app is the natural "network might be back" moment —
+    /// retry a player shell that never became ready (offline at launch).
+    func applicationDidBecomeActive(_ notification: Notification) {
+        MainActor.assumeIsolated { AppState.shared.player.reloadShellIfNeeded() }
+    }
+
     private func applyHotKey() {
         let s = SettingsStore.shared
         hotKey.register(keyCode: UInt32(s.hotKeyCode), modifiers: s.carbonModifiers)

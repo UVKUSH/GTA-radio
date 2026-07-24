@@ -27,7 +27,12 @@ final class YouTubePlayerController: NSObject, ObservableObject, WKScriptMessage
     @Published var duration: Double = 0
     @Published var currentIndex: Int = -1   // playlist index, -1 if not a playlist
 
+    /// True when the IFrame API never came up (e.g. offline at launch). The
+    /// HUD shows a "player offline" state and we retry on app activation.
+    @Published var shellFailed = false
+
     private var ready = false
+    private var readyTimeout: Task<Void, Never>?
     private enum Pending { case video(String, Double), playlist(String, Int, Double) }
     private var pending: Pending?
 
@@ -59,13 +64,20 @@ final class YouTubePlayerController: NSObject, ObservableObject, WKScriptMessage
         lastErrorCode = nil
         currentIndex = -1
         if ready { evaluate("loadVideo('\(id)',\(startSeconds),\(lastVolume))") }
-        else { pending = .video(id, startSeconds) }
+        else { pending = .video(id, startSeconds); reloadShellIfNeeded() }
     }
 
     func playPlaylist(_ id: String, index: Int = 0, startSeconds: Double = 0) {
         lastErrorCode = nil
         if ready { evaluate("loadList('\(id)',\(index),\(startSeconds),\(lastVolume))") }
-        else { pending = .playlist(id, index, startSeconds) }
+        else { pending = .playlist(id, index, startSeconds); reloadShellIfNeeded() }
+    }
+
+    /// Re-attempt the player shell after a failed start (queued tunes flush
+    /// automatically once the `ready` message arrives).
+    func reloadShellIfNeeded() {
+        guard !ready, shellFailed else { return }
+        loadPlayerShell()
     }
 
     // MARK: Transport
@@ -96,6 +108,8 @@ final class YouTubePlayerController: NSObject, ObservableObject, WKScriptMessage
         switch type {
         case "ready":
             ready = true
+            shellFailed = false
+            readyTimeout?.cancel()
             flushPending()
         case "state":
             if let s = body["state"] as? Int {
@@ -133,7 +147,14 @@ final class YouTubePlayerController: NSObject, ObservableObject, WKScriptMessage
     }
 
     private func loadPlayerShell() {
+        shellFailed = false
         webView.loadHTMLString(Self.playerHTML, baseURL: URL(string: "http://localhost"))
+        readyTimeout?.cancel()
+        readyTimeout = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 12_000_000_000)
+            guard let self, !Task.isCancelled, !self.ready else { return }
+            self.shellFailed = true
+        }
     }
 
     private static let playerHTML = """

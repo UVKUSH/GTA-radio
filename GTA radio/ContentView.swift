@@ -154,10 +154,12 @@ struct ContentView: View {
         if let s = playingStation, let slot = playingSlotIndex {
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 8) {
-                    Text(playerCtl.lastErrorCode == nil ? "NOW PLAYING · \(Theme.frequency(for: slot)) FM"
-                                                         : "CAN'T EMBED THIS ONE")
+                    Text(playerCtl.shellFailed ? "PLAYER OFFLINE — CHECK YOUR CONNECTION"
+                         : playerCtl.lastErrorCode == nil ? "NOW PLAYING · \(Theme.frequency(for: slot)) FM"
+                                                          : "CAN'T EMBED THIS ONE")
                         .font(.gtaMono(10)).tracking(1.5)
-                        .foregroundStyle(playerCtl.lastErrorCode == nil ? Theme.teal : Theme.magenta)
+                        .foregroundStyle(!playerCtl.shellFailed && playerCtl.lastErrorCode == nil
+                                         ? Theme.teal : Theme.magenta)
                     if let kind = s.kind { KindBadge(kind: kind) }
                 }
                 Text(s.displayName).font(.gtaDisplay(28)).foregroundStyle(Theme.bone).lineLimit(1)
@@ -305,8 +307,8 @@ struct ContentView: View {
                                       subtitle: "Browse the playlist and choose which videos become stations.") {
                         loadPicker(listID)
                     }
-                    PlaylistChoiceRow(title: "Fill 26 slots from playlist",
-                                      subtitle: "Each slot becomes one video, named by its title.") {
+                    PlaylistChoiceRow(title: "Fill empty slots from playlist",
+                                      subtitle: "Each empty slot becomes one video, named by its title. Occupied slots are kept.") {
                         pasteSlot = nil
                         Task { await store.fillFromPlaylist(listID, at: basePath) }
                     }
