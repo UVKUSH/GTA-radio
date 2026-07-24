@@ -230,6 +230,15 @@ private struct StationNode: View {
     let station: Station
     let isCurrent: Bool
     let isHovered: Bool
+    @ObservedObject private var settings = SettingsStore.shared
+
+    /// User-set dial opacity; hover/now-playing always render full-strength
+    /// so feedback stays readable, and empty slots keep their extra dimming.
+    private var nodeOpacity: Double {
+        let user = (isHovered || isCurrent) ? 1 : settings.dialIconOpacity
+        let empty = station.isEmpty ? (isHovered ? 0.65 : 0.32) : 1
+        return user * empty
+    }
 
     private var diameter: CGFloat { isHovered ? 74 : 58 }
 
@@ -249,7 +258,7 @@ private struct StationNode: View {
         .scaleEffect(isHovered ? 1.24 : 1)
         .zIndex(isHovered ? 1 : 0)
         .animation(.spring(response: 0.32, dampingFraction: 0.72), value: isHovered)
-        .opacity(station.isEmpty ? (isHovered ? 0.65 : 0.32) : 1)
+        .opacity(nodeOpacity)
     }
 
     private var circle: some View {

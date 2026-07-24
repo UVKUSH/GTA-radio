@@ -43,6 +43,12 @@ struct SettingsView: View {
                     Text("Audio controls opacity: \(Int(settings.controlsOpacity * 100))%")
                     Slider(value: $settings.controlsOpacity, in: 0.2...1.0)
                 }
+                VStack(alignment: .leading) {
+                    Text("Dial station opacity: \(Int(settings.dialIconOpacity * 100))%")
+                    Slider(value: $settings.dialIconOpacity, in: 0.25...1.0)
+                    Text("Hovered and now-playing stations always show at full strength.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
             } header: {
                 Label("Appearance", systemImage: "paintbrush.fill")
             }

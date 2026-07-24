@@ -31,6 +31,7 @@ final class SettingsStore: ObservableObject {
 
     @Published var backgroundOpacity: Double { didSet { defaults.set(backgroundOpacity, forKey: "backgroundOpacity") } }
     @Published var controlsOpacity: Double { didSet { defaults.set(controlsOpacity, forKey: "controlsOpacity") } }
+    @Published var dialIconOpacity: Double { didSet { defaults.set(dialIconOpacity, forKey: "dialIconOpacity") } }
     @Published var audioOnly: Bool { didSet { defaults.set(audioOnly, forKey: "audioOnly") } }
 
     private init() {
@@ -41,6 +42,7 @@ final class SettingsStore: ObservableObject {
         modShift = defaults.object(forKey: "modShift") as? Bool ?? false
         backgroundOpacity = defaults.object(forKey: "backgroundOpacity") as? Double ?? 0.55
         controlsOpacity = defaults.object(forKey: "controlsOpacity") as? Double ?? 1.0
+        dialIconOpacity = defaults.object(forKey: "dialIconOpacity") as? Double ?? 1.0
         audioOnly = defaults.object(forKey: "audioOnly") as? Bool ?? false
     }
 
