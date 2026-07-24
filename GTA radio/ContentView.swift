@@ -21,6 +21,13 @@ struct ContentView: View {
     @State private var renameSlot: Int?
     @State private var renameText = ""
 
+    // Playlist picker (inside the add sheet)
+    @State private var pickerResult: PlaylistPageResolver.Result?
+    @State private var pickerLoading = false
+    @State private var pickerFailed = false
+    @State private var pickerSelection: [String] = []   // ordered — slots fill in click order
+    @State private var pickerAdded: Set<String> = []
+
     private var player: YouTubePlayerController { app.player }
     private var basePath: [Int] { app.currentPath }
 
@@ -190,9 +197,17 @@ struct ContentView: View {
     private func artwork(for station: Station?) -> some View {
         ZStack {
             if let t = station?.thumbnailURL, let url = URL(string: t) {
-                AsyncImage(url: url) { img in img.resizable().aspectRatio(contentMode: .fill) }
-                    placeholder: { Theme.ink }
-                    .blur(radius: 60).overlay(Color.black.opacity(0.45))
+                // Overlay-on-clear keeps the .fill image out of layout: an
+                // unclipped fill backdrop inflates the hosting view's size and
+                // locks window resizing in audio-only mode.
+                Color.clear
+                    .overlay {
+                        AsyncImage(url: url) { img in img.resizable().aspectRatio(contentMode: .fill) }
+                            placeholder: { Theme.ink }
+                            .blur(radius: 60)
+                    }
+                    .clipped()
+                    .overlay(Color.black.opacity(0.45))
                 AsyncImage(url: url) { img in img.resizable().aspectRatio(contentMode: .fill) }
                     placeholder: { Theme.ink }
                     .frame(width: 220, height: 220)
@@ -241,59 +256,168 @@ struct ContentView: View {
     }
 
     private func pasteSheet(slot: Int) -> some View {
-        let path = basePath + [slot]
-        let classified = RadioStore.classify(pasteText)
-        return VStack(alignment: .leading, spacing: 14) {
-            Text("Add station").font(.gtaDisplay(24)).foregroundStyle(.primary)
-            Text("Paste a YouTube video, Shorts, live, or playlist link.")
-                .font(.caption).foregroundStyle(.secondary)
-            TextField("https://youtube.com/watch?v=…", text: $pasteText)
-                .textFieldStyle(.roundedBorder)
-            detectionLabel
-
-            if case .playlist(let listID) = classified {
-                Divider().padding(.vertical, 2)
-                Text("This is a playlist — how should it fill the slots?")
-                    .font(.caption).foregroundStyle(.secondary)
-                VStack(spacing: 8) {
-                    PlaylistChoiceRow(title: "Add as one station",
-                                      subtitle: "One slot plays the whole playlist through.") {
-                        let url = pasteText; pasteSlot = nil
-                        Task { await store.assign(url: url, at: path) }
-                    }
-                    PlaylistChoiceRow(title: "Fill 26 slots from playlist",
-                                      subtitle: "Each slot becomes one video, named by its title.") {
-                        pasteSlot = nil
-                        Task { await store.fillFromPlaylist(listID, at: basePath) }
-                    }
-                    PlaylistChoiceRow(title: "Set all 26 to this playlist",
-                                      subtitle: "Every slot plays this same playlist.") {
-                        pasteSlot = nil
-                        Task {
-                            let info = try? await PlaylistPageResolver.fetch(playlistID: listID, limit: 1)
-                            store.setAllToPlaylist(listID, name: info?.title, at: basePath)
-                        }
-                    }
-                }
-            }
-
-            HStack {
-                Spacer()
-                Button("Cancel") { pasteSlot = nil }
-                if case .playlist = classified {
-                    // Playlist choices above are the actions; no generic Add.
-                } else {
-                    Button("Add") {
-                        let url = pasteText; pasteSlot = nil
-                        Task { await store.assign(url: url, at: path) }
-                    }
-                    .keyboardShortcut(.defaultAction)
-                    .disabled(classified == nil)
-                }
+        VStack(alignment: .leading, spacing: 14) {
+            if let result = pickerResult {
+                playlistPicker(result: result, slot: slot)
+            } else {
+                pasteForm(slot: slot)
             }
         }
         .padding(24)
         .frame(width: 460)
+        .onDisappear {
+            pickerResult = nil; pickerSelection = []; pickerAdded = []
+            pickerLoading = false; pickerFailed = false
+        }
+    }
+
+    @ViewBuilder private func pasteForm(slot: Int) -> some View {
+        let path = basePath + [slot]
+        let classified = RadioStore.classify(pasteText)
+        Text("Add station").font(.gtaDisplay(24)).foregroundStyle(.primary)
+        Text("Paste a YouTube video, Shorts, live, or playlist link.")
+            .font(.caption).foregroundStyle(.secondary)
+        TextField("https://youtube.com/watch?v=…", text: $pasteText)
+            .textFieldStyle(.roundedBorder)
+        detectionLabel
+
+        if case .playlist(let listID) = classified {
+            Divider().padding(.vertical, 2)
+            Text("This is a playlist — how should it fill the slots?")
+                .font(.caption).foregroundStyle(.secondary)
+            VStack(spacing: 8) {
+                PlaylistChoiceRow(title: "Pick videos yourself…",
+                                  subtitle: "Browse the playlist and choose which videos become stations.") {
+                    loadPicker(listID)
+                }
+                PlaylistChoiceRow(title: "Add as one station",
+                                  subtitle: "One slot plays the whole playlist through.") {
+                    let url = pasteText; pasteSlot = nil
+                    Task { await store.assign(url: url, at: path) }
+                }
+                PlaylistChoiceRow(title: "Fill 26 slots from playlist",
+                                  subtitle: "Each slot becomes one video, named by its title.") {
+                    pasteSlot = nil
+                    Task { await store.fillFromPlaylist(listID, at: basePath) }
+                }
+                PlaylistChoiceRow(title: "Set all 26 to this playlist",
+                                  subtitle: "Every slot plays this same playlist.") {
+                    pasteSlot = nil
+                    Task {
+                        let info = try? await PlaylistPageResolver.fetch(playlistID: listID, limit: 1)
+                        store.setAllToPlaylist(listID, name: info?.title, at: basePath)
+                    }
+                }
+            }
+            if pickerLoading {
+                HStack { Spacer(); ProgressView().controlSize(.small); Spacer() }
+            } else if pickerFailed {
+                Label("Couldn't load this playlist — check the link or try again.",
+                      systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption).foregroundStyle(.orange)
+            }
+        }
+
+        HStack {
+            Spacer()
+            Button("Cancel") { pasteSlot = nil }
+            if case .playlist = classified {
+                // Playlist choices above are the actions; no generic Add.
+            } else {
+                Button("Add") {
+                    let url = pasteText; pasteSlot = nil
+                    Task { await store.assign(url: url, at: path) }
+                }
+                .keyboardShortcut(.defaultAction)
+                .disabled(classified == nil)
+            }
+        }
+    }
+
+    // MARK: Playlist picker
+
+    private func loadPicker(_ listID: String) {
+        guard !pickerLoading else { return }
+        pickerLoading = true; pickerFailed = false
+        Task {
+            let result = try? await PlaylistPageResolver.fetch(playlistID: listID, limit: 100)
+            pickerLoading = false
+            if let result, !result.videoIDs.isEmpty { pickerResult = result }
+            else { pickerFailed = true }
+        }
+    }
+
+    @ViewBuilder private func playlistPicker(result: PlaylistPageResolver.Result, slot: Int) -> some View {
+        HStack(spacing: 10) {
+            Button {
+                pickerResult = nil; pickerSelection = []
+            } label: {
+                Label("Back", systemImage: "chevron.left").font(.caption)
+            }
+            Text(result.title ?? "Playlist").font(.gtaDisplay(20)).lineLimit(1)
+            Spacer()
+            Text("\(result.videoIDs.count) VIDEOS").font(.gtaMono(9)).foregroundStyle(.secondary)
+        }
+        Text("Click to select, double-click to add instantly. Videos fill this slot first, then the next empty ones.")
+            .font(.caption).foregroundStyle(.secondary)
+
+        ScrollView {
+            LazyVStack(spacing: 4) {
+                ForEach(Array(result.videoIDs.enumerated()), id: \.element) { index, vid in
+                    PlaylistVideoRow(videoID: vid, index: index,
+                                     selectionNumber: pickerSelection.firstIndex(of: vid).map { $0 + 1 },
+                                     added: pickerAdded.contains(vid),
+                                     onToggle: { togglePick(vid) },
+                                     onAddNow: { addNow(vid, slot: slot) })
+                }
+            }
+        }
+        .frame(height: 300)
+
+        HStack {
+            Text(emptySlotCountText).font(.caption).foregroundStyle(.secondary)
+            Spacer()
+            Button("Done") { pasteSlot = nil }
+            Button("Add \(pickerSelection.count) selected") { addSelected(slot: slot) }
+                .keyboardShortcut(.defaultAction)
+                .disabled(pickerSelection.isEmpty)
+        }
+    }
+
+    private var emptySlotCountText: String {
+        let empty = store.children(at: basePath).filter(\.isEmpty).count
+        return "\(empty) empty slot\(empty == 1 ? "" : "s") here"
+    }
+
+    private func togglePick(_ vid: String) {
+        if let i = pickerSelection.firstIndex(of: vid) { pickerSelection.remove(at: i) }
+        else { pickerSelection.append(vid) }
+    }
+
+    /// The slot the sheet was opened on while it's still empty, then the first
+    /// empty sibling — never overwrites an occupied slot.
+    private func nextEmptyPath(preferring slot: Int) -> [Int]? {
+        let siblings = store.children(at: basePath)
+        if siblings.indices.contains(slot), siblings[slot].isEmpty { return basePath + [slot] }
+        return siblings.first(where: \.isEmpty).map { basePath + [$0.id] }
+    }
+
+    private func addNow(_ vid: String, slot: Int) {
+        guard let path = nextEmptyPath(preferring: slot) else { return }
+        pickerAdded.insert(vid)
+        pickerSelection.removeAll { $0 == vid }
+        Task { await store.assign(url: "https://youtu.be/\(vid)", at: path, nameByTitle: true) }
+    }
+
+    private func addSelected(slot: Int) {
+        let picks = pickerSelection
+        pasteSlot = nil
+        Task {
+            for vid in picks {
+                guard let path = nextEmptyPath(preferring: slot) else { break }
+                await store.assign(url: "https://youtu.be/\(vid)", at: path, nameByTitle: true)
+            }
+        }
     }
 
     @ViewBuilder private var detectionLabel: some View {
@@ -365,6 +489,57 @@ struct PlaylistChoiceRow: View {
     }
 }
 
+/// One video inside the playlist picker. Thumbnail is instant (i.ytimg.com),
+/// the title arrives lazily via oEmbed as the row scrolls into view.
+struct PlaylistVideoRow: View {
+    let videoID: String
+    let index: Int
+    let selectionNumber: Int?   // 1-based position in the fill order, nil = unselected
+    let added: Bool
+    let onToggle: () -> Void
+    let onAddNow: () -> Void
+    @State private var title: String?
+
+    var body: some View {
+        HStack(spacing: 10) {
+            AsyncImage(url: URL(string: "https://i.ytimg.com/vi/\(videoID)/mqdefault.jpg")) {
+                $0.resizable().aspectRatio(contentMode: .fill)
+            } placeholder: { Color.black.opacity(0.3) }
+                .frame(width: 64, height: 36)
+                .clipShape(RoundedRectangle(cornerRadius: 6))
+
+            Text(title ?? "Video \(index + 1)")
+                .font(.system(size: 12))
+                .lineLimit(1)
+                .foregroundStyle(added ? .secondary : .primary)
+
+            Spacer(minLength: 8)
+
+            if added {
+                Label("Added", systemImage: "checkmark.circle.fill")
+                    .font(.caption).foregroundStyle(.green)
+            } else if let n = selectionNumber {
+                Text("\(n)")
+                    .font(.system(size: 11, weight: .bold))
+                    .frame(width: 20, height: 20)
+                    .background(Theme.teal, in: Circle())
+                    .foregroundStyle(.black)
+            } else {
+                Image(systemName: "circle")
+                    .font(.system(size: 14)).foregroundStyle(.secondary)
+            }
+        }
+        .padding(.horizontal, 8).padding(.vertical, 5)
+        .background(RoundedRectangle(cornerRadius: 8)
+            .fill(selectionNumber != nil ? Color.primary.opacity(0.1) : Color.clear))
+        .contentShape(Rectangle())
+        // Double-tap must be attached before single-tap so it gets priority.
+        .onTapGesture(count: 2) { if !added { onAddNow() } }
+        .onTapGesture { if !added { onToggle() } }
+        .task { title = try? await OEmbed.fetch(videoID: videoID).title }
+    }
+}
+
 /// Small "VIDEO" / "PLAYLIST" / "FOLDER" pill.
 struct KindBadge: View {
     let kind: String
@@ -382,6 +557,7 @@ struct KindBadge: View {
 struct StationDial: View {
     let station: Station
     let isCurrent: Bool
+    @State private var hovering = false
 
     private var diameter: CGFloat { isCurrent ? 70 : 60 }
 
@@ -393,9 +569,19 @@ struct StationDial: View {
             }
             .frame(width: diameter, height: diameter)
             .overlay(ring)
+            .overlay { if isCurrent { BroadcastRipple() } }
             .overlay(alignment: .bottomTrailing) { kindBadge }
+            .overlay(alignment: .bottom) {
+                if isCurrent {
+                    EqualizerBadge()
+                        .padding(.horizontal, 4).padding(.vertical, 2)
+                        .background(.black.opacity(0.75), in: Capsule())
+                        .offset(y: 7)
+                }
+            }
+            .scaleEffect(hovering ? 1.08 : 1)
             .shadow(color: isCurrent ? Theme.teal.opacity(0.5) : .black.opacity(0.4),
-                    radius: isCurrent ? 10 : 5)
+                    radius: isCurrent ? 10 : (hovering ? 8 : 5))
 
             Text(station.isEmpty ? "EMPTY" : station.displayName)
                 .font(.gtaDisplay(13))
@@ -407,6 +593,8 @@ struct StationDial: View {
         }
         .frame(width: 88, height: 116)
         .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isCurrent)
+        .animation(.spring(response: 0.25, dampingFraction: 0.7), value: hovering)
+        .onHover { hovering = $0 }
     }
 
     @ViewBuilder private var content: some View {
