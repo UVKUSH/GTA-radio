@@ -22,6 +22,15 @@ struct ContentView: View {
     @State private var renameText = ""
     @State private var showWheels = false
 
+    /// Result of probing a pasted playlist's public page — private/deleted
+    /// playlists can't be scraped or embedded, so warn before adding.
+    private enum PlaylistStatus: Equatable {
+        case checking
+        case isPublic(title: String?, count: Int)
+        case privateOrEmpty
+    }
+    @State private var playlistStatus: PlaylistStatus?
+
     // Playlist picker (inside the add sheet)
     @State private var pickerResult: PlaylistPageResolver.Result?
     @State private var pickerLoading = false
@@ -270,7 +279,7 @@ struct ContentView: View {
         .frame(width: 460)
         .onDisappear {
             pickerResult = nil; pickerSelection = []; pickerAdded = []
-            pickerLoading = false; pickerFailed = false
+            pickerLoading = false; pickerFailed = false; playlistStatus = nil
         }
     }
 
@@ -285,23 +294,30 @@ struct ContentView: View {
         detectionLabel
 
         if case .playlist(let listID) = classified {
+            let unavailable = playlistStatus == .privateOrEmpty
             Divider().padding(.vertical, 2)
             Text("This is a playlist — how should it fill the slots?")
                 .font(.caption).foregroundStyle(.secondary)
+            playlistStatusLabel
             VStack(spacing: 8) {
-                PlaylistChoiceRow(title: "Pick videos yourself…",
-                                  subtitle: "Browse the playlist and choose which videos become stations.") {
-                    loadPicker(listID)
+                Group {
+                    PlaylistChoiceRow(title: "Pick videos yourself…",
+                                      subtitle: "Browse the playlist and choose which videos become stations.") {
+                        loadPicker(listID)
+                    }
+                    PlaylistChoiceRow(title: "Fill 26 slots from playlist",
+                                      subtitle: "Each slot becomes one video, named by its title.") {
+                        pasteSlot = nil
+                        Task { await store.fillFromPlaylist(listID, at: basePath) }
+                    }
                 }
+                .disabled(unavailable)
+                .opacity(unavailable ? 0.4 : 1)
+
                 PlaylistChoiceRow(title: "Add as one station",
                                   subtitle: "One slot plays the whole playlist through.") {
                     let url = pasteText; pasteSlot = nil
                     Task { await store.assign(url: url, at: path) }
-                }
-                PlaylistChoiceRow(title: "Fill 26 slots from playlist",
-                                  subtitle: "Each slot becomes one video, named by its title.") {
-                    pasteSlot = nil
-                    Task { await store.fillFromPlaylist(listID, at: basePath) }
                 }
                 PlaylistChoiceRow(title: "Set all 26 to this playlist",
                                   subtitle: "Every slot plays this same playlist.") {
@@ -310,6 +326,16 @@ struct ContentView: View {
                         let info = try? await PlaylistPageResolver.fetch(playlistID: listID, limit: 1)
                         store.setAllToPlaylist(listID, name: info?.title, at: basePath)
                     }
+                }
+            }
+            .task(id: listID) {
+                playlistStatus = .checking
+                let result = try? await PlaylistPageResolver.fetch(playlistID: listID)
+                guard !Task.isCancelled else { return }
+                if let result, !result.videoIDs.isEmpty {
+                    playlistStatus = .isPublic(title: result.title, count: result.videoIDs.count)
+                } else {
+                    playlistStatus = .privateOrEmpty
                 }
             }
             if pickerLoading {
@@ -420,6 +446,27 @@ struct ContentView: View {
                 guard let path = nextEmptyPath(preferring: slot) else { break }
                 await store.assign(url: "https://youtu.be/\(vid)", at: path, nameByTitle: true)
             }
+        }
+    }
+
+    @ViewBuilder private var playlistStatusLabel: some View {
+        switch playlistStatus {
+        case .checking:
+            HStack(spacing: 6) {
+                ProgressView().controlSize(.small)
+                Text("Checking playlist visibility…").font(.caption).foregroundStyle(.secondary)
+            }
+        case .isPublic(let title, let count):
+            Label("Public playlist · \(title ?? "Untitled") · \(count)\(count >= RadioStore.slotCount ? "+" : "") videos",
+                  systemImage: "checkmark.seal.fill")
+                .font(.caption).foregroundStyle(.green)
+        case .privateOrEmpty:
+            Label("Private or unavailable playlist — its videos can't be read, and playback will likely fail. Make it Public or Unlisted on YouTube first.",
+                  systemImage: "lock.fill")
+                .font(.caption).foregroundStyle(.orange)
+                .fixedSize(horizontal: false, vertical: true)
+        case nil:
+            EmptyView()
         }
     }
 
