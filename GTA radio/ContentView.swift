@@ -33,6 +33,7 @@ struct ContentView: View {
                 Spacer(minLength: 0)
                 bottomHUD
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         }
         .frame(minWidth: 820, minHeight: 560)
         .background(Theme.ink)
@@ -126,6 +127,7 @@ struct ContentView: View {
 
             filmstrip
         }
+        .frame(maxWidth: .infinity)
         .padding(20)
     }
 
@@ -169,6 +171,7 @@ struct ContentView: View {
             }
             .padding(.horizontal, 4).padding(.vertical, 6)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     // MARK: Now-playing lookup
