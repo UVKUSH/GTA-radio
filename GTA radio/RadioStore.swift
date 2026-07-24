@@ -74,13 +74,24 @@ struct Resume: Codable, Equatable {
     var index: Int   // playlist index (-1 / 0 for single videos)
 }
 
+/// A named snapshot of the whole 26-slot wheel — folders, names, thumbnails,
+/// and uids included (so resume positions survive a save/load round-trip).
+struct WheelPreset: Codable, Identifiable, Equatable {
+    var id: UUID = UUID()
+    var name: String
+    var savedAt: Date
+    var stations: [Station]
+}
+
 @MainActor
 final class RadioStore: ObservableObject {
     static let slotCount = 26
     @Published private(set) var stations: [Station]
+    @Published private(set) var presets: [WheelPreset]
 
     private let saveURL: URL
     private let resumeURL: URL
+    private let presetsURL: URL
     // Keyed by station uid (stable across reorder/nesting), kept out of @Published
     // so frequent position saves don't redraw the grid.
     private var resumes: [String: Resume]
@@ -92,6 +103,14 @@ final class RadioStore: ObservableObject {
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         saveURL = dir.appendingPathComponent("stations.json")
         resumeURL = dir.appendingPathComponent("resumes.json")
+        presetsURL = dir.appendingPathComponent("presets.json")
+
+        if let data = try? Data(contentsOf: presetsURL),
+           let loaded = try? JSONDecoder().decode([WheelPreset].self, from: data) {
+            presets = loaded
+        } else {
+            presets = []
+        }
 
         if let data = try? Data(contentsOf: saveURL),
            let loaded = try? JSONDecoder().decode([Station].self, from: data),
@@ -291,6 +310,53 @@ final class RadioStore: ObservableObject {
         }
         if parent.isEmpty { fill(&stations); persist() }
         else { update(at: parent) { if $0.children == nil { $0.children = RadioStore.emptyChildren() }; fill(&$0.children!) } }
+    }
+
+    // MARK: Wheel presets (saved 26-slot layouts)
+
+    /// The auto-backup written just before any preset load, so swapping wheels
+    /// can never destroy the one you were on.
+    static let backupPresetName = "Last session"
+
+    /// Snapshot the current wheel. Saving under an existing name overwrites
+    /// that preset instead of piling up duplicates.
+    func savePreset(named rawName: String) {
+        let name = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty else { return }
+        upsertPreset(named: name, snapshot: stations)
+    }
+
+    /// Swap the whole wheel for a saved one (current wheel goes to the backup).
+    func loadPreset(_ preset: WheelPreset) {
+        upsertPreset(named: Self.backupPresetName, snapshot: stations)
+        stations = preset.stations
+        persist()
+    }
+
+    func renamePreset(id: UUID, to rawName: String) {
+        let name = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty, let i = presets.firstIndex(where: { $0.id == id }) else { return }
+        presets[i].name = name
+        persistPresets()
+    }
+
+    func deletePreset(id: UUID) {
+        presets.removeAll { $0.id == id }
+        persistPresets()
+    }
+
+    private func upsertPreset(named name: String, snapshot: [Station]) {
+        if let i = presets.firstIndex(where: { $0.name == name }) {
+            presets[i].stations = snapshot
+            presets[i].savedAt = Date()
+        } else {
+            presets.insert(WheelPreset(name: name, savedAt: Date(), stations: snapshot), at: 0)
+        }
+        persistPresets()
+    }
+
+    private func persistPresets() {
+        if let data = try? JSONEncoder().encode(presets) { try? data.write(to: presetsURL) }
     }
 
     func rename(at path: [Int], to newName: String) {

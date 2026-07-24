@@ -20,6 +20,7 @@ struct ContentView: View {
     @State private var pasteText = ""
     @State private var renameSlot: Int?
     @State private var renameText = ""
+    @State private var showWheels = false
 
     // Playlist picker (inside the add sheet)
     @State private var pickerResult: PlaylistPageResolver.Result?
@@ -46,6 +47,7 @@ struct ContentView: View {
         .background(Theme.ink)
         .sheet(item: sheetBinding($pasteSlot)) { pasteSheet(slot: $0.id) }
         .sheet(item: sheetBinding($renameSlot)) { renameSheet(slot: $0.id) }
+        .sheet(isPresented: $showWheels) { WheelsSheet(isPresented: $showWheels) }
     }
 
     // MARK: Background (stable web view, opacity-layered)
@@ -90,6 +92,7 @@ struct ContentView: View {
             }
             Spacer()
             HStack(spacing: 10) {
+                HUDIconButton(system: "steeringwheel") { showWheels = true }
                 HUDIconButton(system: "shuffle") { app.shuffleAllStations() }
                 HUDIconButton(system: settings.audioOnly ? "waveform" : "video.fill",
                               active: !settings.audioOnly) { settings.audioOnly.toggle() }
