@@ -539,7 +539,7 @@ git commit -m "feat(settings): replay Intro video and welcome tour"
 **Interfaces:**
 - Produces: a runnable `scripts/release.sh` (requires the owner's Developer ID cert + `GTARadioNotary` keychain profile at run time).
 
-- [ ] **Step 1: Create `ExportOptions.plist`**
+- [x] **Step 1: Create `ExportOptions.plist`**
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
@@ -556,7 +556,7 @@ git commit -m "feat(settings): replay Intro video and welcome tour"
 </plist>
 ```
 
-- [ ] **Step 2: Create `scripts/release.sh`**
+- [x] **Step 2: Create `scripts/release.sh`**
 
 ```bash
 #!/usr/bin/env bash
@@ -617,7 +617,7 @@ stapler validate "$DMG"
 echo "DONE → $DMG"
 ```
 
-- [ ] **Step 3: Make it executable + shell-syntax check**
+- [x] **Step 3: Make it executable + shell-syntax check**
 
 Run:
 ```bash
@@ -626,7 +626,7 @@ bash -n scripts/release.sh && echo "syntax OK"
 ```
 Expected: `syntax OK`
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add ExportOptions.plist scripts/release.sh
