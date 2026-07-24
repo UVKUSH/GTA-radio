@@ -101,7 +101,7 @@ git commit -m "feat(onboarding): coach-mark anchor preference infra"
 - Consumes: `CoachTarget`, `CoachAnchorKey` (Task 1).
 - Produces: `struct OnboardingStep { let target: CoachTarget?; let title: String; let body: String }`; `let onboardingSteps: [OnboardingStep]`; `struct OnboardingOverlay: View { init(onFinish: @escaping () -> Void) }`.
 
-- [ ] **Step 1: Append the step model and steps**
+- [x] **Step 1: Append the step model and steps**
 
 Append to `GTA radio/OnboardingOverlay.swift`:
 
@@ -123,7 +123,7 @@ let onboardingSteps: [OnboardingStep] = [
 ]
 ```
 
-- [ ] **Step 2: Append the overlay view**
+- [x] **Step 2: Append the overlay view**
 
 Append to `GTA radio/OnboardingOverlay.swift`:
 
@@ -209,12 +209,12 @@ struct OnboardingOverlay: View {
 
 > NOTE for Task 5: the spotlight cutout is added in Task 5 once the overlay is wired to real anchors — this task ships a working centered-card tour first (all steps show as centered cards), which is the graceful-fallback behavior anyway.
 
-- [ ] **Step 3: Build**
+- [x] **Step 3: Build**
 
 Run: `xcodebuild -project "GTA radio.xcodeproj" -scheme "GTA radio" -destination 'platform=macOS' build 2>&1 | grep -E "BUILD (SUCCEEDED|FAILED)|error:"`
 Expected: `** BUILD SUCCEEDED **`
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add "GTA radio/OnboardingOverlay.swift"
