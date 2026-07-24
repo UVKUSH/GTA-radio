@@ -27,7 +27,7 @@ final class SoundPlayer {
 
     /// Play the next blip, cycling 1→2→3 so consecutive hovers never repeat.
     func hoverRotate() {
-        guard !players.isEmpty else { return }
+        guard SettingsStore.shared.uiSounds, !players.isEmpty else { return }
         rotation = (rotation + 1) % players.count
         let p = players[rotation]
         p.currentTime = 0

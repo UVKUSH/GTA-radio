@@ -23,7 +23,11 @@ final class OverlayWindowController {
     }
 
     func show() {
-        let screen = NSScreen.main ?? NSScreen.screens.first
+        // The dial belongs where the user is looking: the screen under the
+        // mouse, not whichever screen owns the key window.
+        let mouse = NSEvent.mouseLocation
+        let screen = NSScreen.screens.first { NSMouseInRect(mouse, $0.frame, false) }
+            ?? NSScreen.main ?? NSScreen.screens.first
         let frame = screen?.frame ?? NSRect(x: 0, y: 0, width: 1280, height: 800)
 
         let panel = KeyablePanel(contentRect: frame,

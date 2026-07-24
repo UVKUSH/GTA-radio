@@ -24,12 +24,20 @@ final class AppState: ObservableObject {
     @Published var nowPlayingIsPlaylist = false
 
     @Published var shuffleOn = false
-    @Published var volume: Double = 100 { didSet { player.setVolume(Int(volume)) } }
+    @Published var volume: Double = UserDefaults.standard.object(forKey: "volume") as? Double ?? 100 {
+        didSet {
+            player.setVolume(Int(volume))
+            UserDefaults.standard.set(volume, forKey: "volume")
+        }
+    }
 
     private var cancellables = Set<AnyCancellable>()
     private var lastPersistedSecond = -1
 
     private init() {
+        // didSet doesn't run for the initial value — hand the restored volume
+        // to the player so the first tune honors it.
+        player.setVolume(Int(volume))
         player.$currentTime
             .sink { [weak self] t in
                 guard let self, let uid = self.nowPlayingUID else { return }

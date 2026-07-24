@@ -55,6 +55,7 @@ struct SettingsView: View {
 
             Section {
                 Toggle("Audio only (hide video, show artwork)", isOn: $settings.audioOnly)
+                Toggle("Dial sound effects", isOn: $settings.uiSounds)
             } header: {
                 Label("Playback", systemImage: "play.circle.fill")
             }

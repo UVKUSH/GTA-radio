@@ -19,7 +19,7 @@ struct SeekBar: View {
         HStack(spacing: 10) {
             Text(timecode(value))
                 .font(.gtaMono(10)).foregroundStyle(Theme.muted)
-                .frame(width: 42, alignment: .leading)
+                .frame(width: 56, alignment: .leading)
 
             Slider(value: Binding(
                 // Clamp: a scrub started on a longer track must not exceed the
@@ -37,13 +37,16 @@ struct SeekBar: View {
 
             Text(timecode(duration))
                 .font(.gtaMono(10)).foregroundStyle(Theme.muted)
-                .frame(width: 42, alignment: .trailing)
+                .frame(width: 56, alignment: .trailing)
         }
     }
 
     private func timecode(_ seconds: Double) -> String {
         guard seconds.isFinite, seconds >= 0 else { return "0:00" }
         let total = Int(seconds)
-        return String(format: "%d:%02d", total / 60, total % 60)
+        let h = total / 3600, m = (total % 3600) / 60, s = total % 60
+        // Long mixes and live archives run past an hour — show it.
+        return h > 0 ? String(format: "%d:%02d:%02d", h, m, s)
+                     : String(format: "%d:%02d", m, s)
     }
 }

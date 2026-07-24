@@ -596,7 +596,7 @@ struct PlaylistVideoRow: View {
         // Double-tap must be attached before single-tap so it gets priority.
         .onTapGesture(count: 2) { if !added { onAddNow() } }
         .onTapGesture { if !added { onToggle() } }
-        .task { title = try? await OEmbed.fetch(videoID: videoID).title }
+        .task { title = await OEmbedTitleCache.title(for: videoID) }
     }
 }
 

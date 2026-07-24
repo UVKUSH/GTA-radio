@@ -28,7 +28,11 @@ struct WheelsSheet: View {
                     .textFieldStyle(.roundedBorder)
                     .onSubmit(saveCurrent)
                 Button("Save current wheel") { saveCurrent() }
-                    .disabled(newName.trimmingCharacters(in: .whitespaces).isEmpty)
+                    .disabled(newName.trimmingCharacters(in: .whitespaces).isEmpty || newNameIsReserved)
+            }
+            if newNameIsReserved {
+                Text("“\(RadioStore.backupPresetName)” is reserved for the automatic backup — pick another name.")
+                    .font(.caption).foregroundStyle(.orange)
             }
 
             if store.presets.isEmpty {
@@ -65,9 +69,16 @@ struct WheelsSheet: View {
         .frame(width: 500)
     }
 
+    /// Saving under the auto-backup's name would get silently clobbered on the
+    /// next load — refuse it up front.
+    private var newNameIsReserved: Bool {
+        newName.trimmingCharacters(in: .whitespaces)
+            .caseInsensitiveCompare(RadioStore.backupPresetName) == .orderedSame
+    }
+
     private func saveCurrent() {
         let name = newName.trimmingCharacters(in: .whitespaces)
-        guard !name.isEmpty else { return }
+        guard !name.isEmpty, !newNameIsReserved else { return }
         store.savePreset(named: name)
         newName = ""
     }
@@ -81,7 +92,11 @@ struct WheelsSheet: View {
     private func export(_ preset: WheelPreset) {
         let panel = NSSavePanel()
         panel.allowedContentTypes = [.json]
-        panel.nameFieldStringValue = "\(preset.name).gtawheel.json"
+        // Wheel names are free text — strip path-hostile characters.
+        let safeName = preset.name
+            .replacingOccurrences(of: "/", with: "-")
+            .replacingOccurrences(of: ":", with: "-")
+        panel.nameFieldStringValue = "\(safeName).gtawheel.json"
         guard panel.runModal() == .OK, let url = panel.url,
               let data = store.exportData(for: preset) else { return }
         do {

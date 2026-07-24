@@ -33,6 +33,7 @@ final class SettingsStore: ObservableObject {
     @Published var controlsOpacity: Double { didSet { defaults.set(controlsOpacity, forKey: "controlsOpacity") } }
     @Published var dialIconOpacity: Double { didSet { defaults.set(dialIconOpacity, forKey: "dialIconOpacity") } }
     @Published var audioOnly: Bool { didSet { defaults.set(audioOnly, forKey: "audioOnly") } }
+    @Published var uiSounds: Bool { didSet { defaults.set(uiSounds, forKey: "uiSounds") } }
 
     private init() {
         hotKeyCode = defaults.object(forKey: "hotKeyCode") as? Int ?? kVK_ANSI_R
@@ -44,6 +45,7 @@ final class SettingsStore: ObservableObject {
         controlsOpacity = defaults.object(forKey: "controlsOpacity") as? Double ?? 1.0
         dialIconOpacity = defaults.object(forKey: "dialIconOpacity") as? Double ?? 1.0
         audioOnly = defaults.object(forKey: "audioOnly") as? Bool ?? false
+        uiSounds = defaults.object(forKey: "uiSounds") as? Bool ?? true
     }
 
     // MARK: Carbon translation
