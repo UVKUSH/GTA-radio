@@ -168,6 +168,31 @@ final class RadioStore: ObservableObject {
         }
     }
 
+    /// Parse the public playlist page (no key) and drop the first 26 videos into
+    /// the 26 slots as individual stations. Names fill in via oEmbed afterwards.
+    func fillFromPlaylist(_ playlistID: String) async {
+        guard let result = try? await PlaylistPageResolver.fetch(playlistID: playlistID),
+              !result.videoIDs.isEmpty else { return }
+        for (i, vid) in result.videoIDs.prefix(Self.slotCount).enumerated() {
+            await assign(url: "https://youtu.be/\(vid)", toSlot: i)
+        }
+    }
+
+    /// Set every slot to the same playlist (each plays the whole list through).
+    func setAllToPlaylist(_ playlistID: String, name: String?) {
+        let url = "https://www.youtube.com/playlist?list=\(playlistID)"
+        for i in 0..<Self.slotCount {
+            var s = Station(id: i)
+            s.sourceURL = url
+            s.source = .playlist(id: playlistID)
+            s.name = name ?? "YouTube Playlist FM"
+            stations[i] = s
+            resumes[i] = nil
+        }
+        persistResumes()
+        persist()
+    }
+
     func rename(slot: Int, to newName: String) {
         let trimmed = newName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }

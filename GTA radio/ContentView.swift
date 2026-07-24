@@ -217,6 +217,33 @@ struct ContentView: View {
             TextField("https://youtube.com/watch?v=…", text: $pasteText)
                 .textFieldStyle(.roundedBorder).frame(width: 400)
             detectionLabel
+
+            // A playlist can either become one station, fill all 26 with its
+            // videos, or set all 26 to the whole playlist.
+            if case .playlist(let listID) = RadioStore.classify(pasteText) {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("This is a playlist — how should it fill the slots?")
+                        .font(.caption).foregroundStyle(.secondary)
+                    HStack {
+                        Button("Add as one station") {
+                            let url = pasteText, s = slot; pasteSlot = nil
+                            Task { await store.assign(url: url, toSlot: s) }
+                        }
+                        Button("Fill 26 slots from playlist") {
+                            pasteSlot = nil
+                            Task { await store.fillFromPlaylist(listID) }
+                        }
+                        Button("Set all 26 to this playlist") {
+                            pasteSlot = nil
+                            Task {
+                                let info = try? await PlaylistPageResolver.fetch(playlistID: listID, limit: 1)
+                                store.setAllToPlaylist(listID, name: info?.title)
+                            }
+                        }
+                    }
+                }
+            }
+
             HStack {
                 Spacer()
                 Button("Cancel") { pasteSlot = nil }
