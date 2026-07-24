@@ -84,11 +84,11 @@ struct SettingsView: View {
 
             Section("Getting started") {
                 Button("Replay Intro video") {
-                    AppState.shared.replayIntro = true
+                    AppState.shared.replayIntroToken += 1
                 }
                 Button("Replay welcome tour") {
                     UserDefaults.standard.set(false, forKey: "hasCompletedOnboarding")
-                    AppState.shared.replayOnboarding = true
+                    AppState.shared.replayOnboardingToken += 1
                 }
             }
         }

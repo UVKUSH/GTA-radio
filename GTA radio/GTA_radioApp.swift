@@ -58,11 +58,13 @@ struct RootView: View {
                     }
                 }
             }
-            .onChange(of: app.replayIntro) { _, want in
-                if want { app.replayIntro = false; showOnboarding = false; showIntro = true }
+            // Each bump is a fresh value, so the replay fires every time — no
+            // reset needed, and no sentinel that can get stuck true.
+            .onChange(of: app.replayIntroToken) { _, _ in
+                showOnboarding = false; showIntro = true
             }
-            .onChange(of: app.replayOnboarding) { _, want in
-                if want { app.replayOnboarding = false; showIntro = false; showOnboarding = true }
+            .onChange(of: app.replayOnboardingToken) { _, _ in
+                showIntro = false; showOnboarding = true
             }
     }
 

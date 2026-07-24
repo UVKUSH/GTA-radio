@@ -31,10 +31,13 @@ final class AppState: ObservableObject {
         }
     }
 
-    /// Set by Settings (a separate window) to re-trigger the intro or the tour
-    /// on the main window's RootView; RootView flips them back to false.
-    @Published var replayIntro = false
-    @Published var replayOnboarding = false
+    /// Bumped by Settings (a separate window) to request an intro/tour replay on
+    /// the main window's RootView. Monotonic so every request is a *distinct*
+    /// value: repeat requests always register and there is no stuck sentinel to
+    /// silently swallow a later one (the failure mode of a plain Bool flag when
+    /// a request lands while no main window is mounted).
+    @Published var replayIntroToken = 0
+    @Published var replayOnboardingToken = 0
 
     private var cancellables = Set<AnyCancellable>()
     private var lastPersistedSecond = -1
