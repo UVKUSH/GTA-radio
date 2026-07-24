@@ -51,16 +51,20 @@ final class YouTubePlayerController: NSObject, ObservableObject, WKScriptMessage
 
     // MARK: Load
 
+    /// Last volume the UI asked for; re-applied on every load so tuning a new
+    /// station keeps the user's level instead of resetting to 100.
+    private var lastVolume = 100
+
     func playVideo(_ id: String, startSeconds: Double = 0) {
         lastErrorCode = nil
         currentIndex = -1
-        if ready { evaluate("loadVideo('\(id)',\(startSeconds))") }
+        if ready { evaluate("loadVideo('\(id)',\(startSeconds),\(lastVolume))") }
         else { pending = .video(id, startSeconds) }
     }
 
     func playPlaylist(_ id: String, index: Int = 0, startSeconds: Double = 0) {
         lastErrorCode = nil
-        if ready { evaluate("loadList('\(id)',\(index),\(startSeconds))") }
+        if ready { evaluate("loadList('\(id)',\(index),\(startSeconds),\(lastVolume))") }
         else { pending = .playlist(id, index, startSeconds) }
     }
 
@@ -72,7 +76,7 @@ final class YouTubePlayerController: NSObject, ObservableObject, WKScriptMessage
     func next() { evaluate("ctl('next')") }
     func previous() { evaluate("ctl('prev')") }
     func setShuffle(_ on: Bool) { evaluate("ctl('shuffle',\(on))") }
-    func setVolume(_ v: Int) { evaluate("ctl('vol',\(v))") }
+    func setVolume(_ v: Int) { lastVolume = v; evaluate("ctl('vol',\(v))") }
     func mute() { evaluate("ctl('mute')") }
     func unmute() { evaluate("ctl('unmute')") }
     func seek(to seconds: Double) { evaluate("if(window.player)window.player.seekTo(\(seconds),true)") }
@@ -117,8 +121,8 @@ final class YouTubePlayerController: NSObject, ObservableObject, WKScriptMessage
 
     private func flushPending() {
         switch pending {
-        case .video(let id, let s): evaluate("loadVideo('\(id)',\(s))")
-        case .playlist(let id, let i, let s): evaluate("loadList('\(id)',\(i),\(s))")
+        case .video(let id, let s): evaluate("loadVideo('\(id)',\(s),\(lastVolume))")
+        case .playlist(let id, let i, let s): evaluate("loadList('\(id)',\(i),\(s),\(lastVolume))")
         case .none: break
         }
         pending = nil
@@ -161,9 +165,18 @@ final class YouTubePlayerController: NSObject, ObservableObject, WKScriptMessage
         }
       });
     }
-    function ensurePlay(){ if(!player) return; player.unMute(); player.setVolume(100); player.playVideo(); }
-    function loadVideo(id,start){ if(player&&player.loadVideoById){ player.loadVideoById({videoId:id, startSeconds:start||0}); ensurePlay(); } }
-    function loadList(id,index,start){ if(player&&player.loadPlaylist){ player.loadPlaylist({list:id, listType:'playlist', index:index||0, startSeconds:start||0}); ensurePlay(); } }
+    // NOTE: load*() calls autoplay on their own. Do NOT call playVideo() right
+    // after them — a playVideo() issued while a new playlist is still loading
+    // makes the player resume the OLD playlist and drop the new one (this was
+    // the "second playlist never loads" bug).
+    function applyAudio(vol){ if(!player) return; player.unMute(); if(typeof vol==='number'&&vol>=0) player.setVolume(vol); }
+    function loadVideo(id,start,vol){ if(player&&player.loadVideoById){ player.loadVideoById({videoId:id, startSeconds:start||0}); applyAudio(vol); } }
+    function loadList(id,index,start,vol){
+      if(!player||!player.loadPlaylist) return;
+      try{ player.stopVideo(); }catch(e){}   // clear old list so the new one always takes
+      player.loadPlaylist({list:id, listType:'playlist', index:index||0, startSeconds:start||0});
+      applyAudio(vol);
+    }
     function ctl(cmd,arg){
       if(!player) return;
       try{
