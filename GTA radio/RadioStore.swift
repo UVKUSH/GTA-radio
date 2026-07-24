@@ -183,23 +183,67 @@ final class RadioStore: ObservableObject {
         persist()
     }
 
-    /// First-run demo stations so the app isn't empty. The user can clear or
-    /// replace any of them. Empty slots stay empty (they show emoji placeholders).
+    /// First-run stations so the app comes up full for a new user. The user can
+    /// clear, rename, reorder, or replace any of them. This only runs when there
+    /// is no saved wheel yet (see `init`), so it never touches an existing user.
+    ///
+    /// A curated 26-slot spread across categories — podcasts, GTA radio, rap,
+    /// indie, house, focus/ambient, plus one playlist (Frank Ocean's *Blonde*).
+    private enum Seed {
+        case video(String, String)          // (videoID, name)
+        case playlist(String, String, String) // (playlistID, firstVideoID, name)
+    }
+
     private static func seededDefaults() -> [Station] {
-        let defaults: [Int: (String, String)] = [
-            0: ("jfKfPfyJRdk", "Lofi Girl FM"),
-            1: ("5yx6BWlEVcY", "Chillhop FM"),
-            2: ("aqz-KE-bpKQ", "Blender FM"),
-            3: ("21X5lGlDOfg", "Nature FM"),
-            4: ("M7lc1UVf-VE", "Developers FM"),
+        let seeds: [Seed] = [
+            // Podcast / comedy
+            .video("5NOf6OMKkAE", "Joey Diaz Radio"),
+            .video("v4Q8l7SQQRk", "Tim Dillon Rants"),
+            .video("ClWf2ahkTMI", "Kill Tony FM"),
+            // Sleep / spoken
+            .video("oZLQ4jHGntk", "Spy Sleep Stories"),
+            .video("AECOloiwXz4", "Kiriakou Sleep FM"),
+            // GTA radio (on-theme)
+            .video("2KOTYup9mVA", "Fever 105"),
+            .playlist("PLObtfyqnio7zB6aGAkKaxPxznvGuLednn", "4ZAh5cNoz_E", "Kanye Discography"),
+            .video("M8DpRFpmN8Q", "Hits Different at 2AM"),
+            // Rap
+            .video("rCC2WMmFf-U", "Ken Carson Mix"),
+            .video("kHeNrdGGvOQ", "Playboi Carti Mix"),
+            // Indie
+            .video("nfHH-Oad9Ic", "Theo Von Radio"),
+            .video("d81qLF5_zDk", "Mac DeMarco FM"),
+            // Playlist — Frank Ocean, Blonde (borrows its first video's thumbnail)
+            .playlist("PLzoqV_VvWIwGzYTcm3r1JwqgQOBXTvKyd", "diIFhc_Kzng", "Blonded FM"),
+            // House / electronic
+            .video("Z1W3Dnx_ccs", "Deep Lo-Fi House"),
+            .video("_QOrKY6bDWA", "Funky House"),
+            .video("D0EtWNu6gWg", "Deep House Mix"),
+            .video("3YNhwAzSUdQ", "Rally House Edits"),
+            .video("hx9BqDAd8KQ", "Deep House & Garage"),
+            .video("bw-bLGXMMAk", "House Mix No.6"),
+            .video("APq749_MvRA", "Rogan Conspiracies"),
+            // Vibe / lounge
+            .video("Stu6m4IrIY8", "Roadtrip Anthems"),
+            .video("122F0wuNCcg", "Old Money Summer"),
+            // Focus / ambient / game
+            .video("yPoE79AzeYQ", "Midnight Focus"),
+            .video("A953td1sKS8", "Social Network OST"),
+            .video("h8UpC5JbMU0", "Minecraft Ambience"),
+            .video("vJ9X1kfOhQ0", "Shane Gillis FM"),
         ]
         return (0..<slotCount).map { i in
-            if let (vid, name) = defaults[i] {
+            guard i < seeds.count else { return Station(id: i) }
+            switch seeds[i] {
+            case let .video(vid, name):
                 return Station(id: i, sourceURL: "https://youtu.be/\(vid)",
                                source: .video(id: vid), name: name, customName: false,
                                thumbnailURL: "https://i.ytimg.com/vi/\(vid)/mqdefault.jpg")
+            case let .playlist(pid, firstVID, name):
+                return Station(id: i, sourceURL: "https://www.youtube.com/playlist?list=\(pid)",
+                               source: .playlist(id: pid), name: name, customName: false,
+                               thumbnailURL: "https://i.ytimg.com/vi/\(firstVID)/mqdefault.jpg")
             }
-            return Station(id: i)
         }
     }
 
@@ -495,6 +539,20 @@ final class RadioStore: ObservableObject {
 // MARK: - Public oEmbed (no API key)
 
 struct OEmbedMetadata { let title: String; let authorName: String; let thumbnailURL: URL? }
+
+/// Session-lifetime title cache so picker rows don't refetch on every scroll
+/// or sheet reopen (and playlist bursts stay polite to the endpoint).
+@MainActor
+enum OEmbedTitleCache {
+    private static var titles: [String: String] = [:]
+
+    static func title(for videoID: String) async -> String? {
+        if let t = titles[videoID] { return t }
+        guard let t = try? await OEmbed.fetch(videoID: videoID).title else { return nil }
+        titles[videoID] = t
+        return t
+    }
+}
 
 enum OEmbed {
     private struct Response: Decodable {
