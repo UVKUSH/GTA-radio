@@ -212,7 +212,7 @@ final class RadioStore: ObservableObject {
 
     // MARK: Path-addressed mutations
 
-    func assign(url: String, at path: [Int]) async {
+    func assign(url: String, at path: [Int], nameByTitle: Bool = false) async {
         guard let source = Self.classify(url), !path.isEmpty else { return }
         var uid = UUID()
         update(at: path) { node in
@@ -234,7 +234,10 @@ final class RadioStore: ObservableObject {
             if let meta = try? await OEmbed.fetch(videoID: id) {
                 update(at: path) { node in
                     guard node.source == source, !node.customName else { return }
-                    node.name = Self.stationName(fromCreator: meta.authorName)
+                    // Playlist-fill names each slot by the track's title; a single
+                    // add names it by the creator ("Lofi Girl FM").
+                    node.name = nameByTitle ? Self.trackName(fromTitle: meta.title)
+                                            : Self.stationName(fromCreator: meta.authorName)
                     // Thumbnail stays the provisional mqdefault (16:9, no black bars).
                 }
             }
@@ -270,7 +273,7 @@ final class RadioStore: ObservableObject {
         guard let result = try? await PlaylistPageResolver.fetch(playlistID: playlistID),
               !result.videoIDs.isEmpty else { return }
         for (i, vid) in result.videoIDs.prefix(Self.slotCount).enumerated() {
-            await assign(url: "https://youtu.be/\(vid)", at: parent + [i])
+            await assign(url: "https://youtu.be/\(vid)", at: parent + [i], nameByTitle: true)
         }
     }
 
@@ -331,6 +334,16 @@ final class RadioStore: ObservableObject {
             name += " FM"
         }
         if name.count > 40 { name = String(name.prefix(40)) }
+        return name
+    }
+
+    /// Name a station after a video's title (used when filling slots from a
+    /// playlist, where each slot is a distinct track). No "FM" suffix — the
+    /// title is the identity — just trimmed and length-capped.
+    static func trackName(fromTitle raw: String) -> String {
+        var name = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        if name.isEmpty { return "YouTube Radio" }
+        if name.count > 40 { name = String(name.prefix(39)).trimmingCharacters(in: .whitespaces) + "…" }
         return name
     }
 

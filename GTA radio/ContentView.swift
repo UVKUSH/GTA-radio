@@ -242,33 +242,36 @@ struct ContentView: View {
 
     private func pasteSheet(slot: Int) -> some View {
         let path = basePath + [slot]
+        let classified = RadioStore.classify(pasteText)
         return VStack(alignment: .leading, spacing: 14) {
             Text("Add station").font(.gtaDisplay(24)).foregroundStyle(.primary)
             Text("Paste a YouTube video, Shorts, live, or playlist link.")
                 .font(.caption).foregroundStyle(.secondary)
             TextField("https://youtube.com/watch?v=…", text: $pasteText)
-                .textFieldStyle(.roundedBorder).frame(width: 400)
+                .textFieldStyle(.roundedBorder)
             detectionLabel
 
-            if case .playlist(let listID) = RadioStore.classify(pasteText) {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("This is a playlist — how should it fill the slots?")
-                        .font(.caption).foregroundStyle(.secondary)
-                    HStack {
-                        Button("Add as one station") {
-                            let url = pasteText; pasteSlot = nil
-                            Task { await store.assign(url: url, at: path) }
-                        }
-                        Button("Fill 26 slots from playlist") {
-                            pasteSlot = nil
-                            Task { await store.fillFromPlaylist(listID, at: basePath) }
-                        }
-                        Button("Set all 26 to this playlist") {
-                            pasteSlot = nil
-                            Task {
-                                let info = try? await PlaylistPageResolver.fetch(playlistID: listID, limit: 1)
-                                store.setAllToPlaylist(listID, name: info?.title, at: basePath)
-                            }
+            if case .playlist(let listID) = classified {
+                Divider().padding(.vertical, 2)
+                Text("This is a playlist — how should it fill the slots?")
+                    .font(.caption).foregroundStyle(.secondary)
+                VStack(spacing: 8) {
+                    PlaylistChoiceRow(title: "Add as one station",
+                                      subtitle: "One slot plays the whole playlist through.") {
+                        let url = pasteText; pasteSlot = nil
+                        Task { await store.assign(url: url, at: path) }
+                    }
+                    PlaylistChoiceRow(title: "Fill 26 slots from playlist",
+                                      subtitle: "Each slot becomes one video, named by its title.") {
+                        pasteSlot = nil
+                        Task { await store.fillFromPlaylist(listID, at: basePath) }
+                    }
+                    PlaylistChoiceRow(title: "Set all 26 to this playlist",
+                                      subtitle: "Every slot plays this same playlist.") {
+                        pasteSlot = nil
+                        Task {
+                            let info = try? await PlaylistPageResolver.fetch(playlistID: listID, limit: 1)
+                            store.setAllToPlaylist(listID, name: info?.title, at: basePath)
                         }
                     }
                 }
@@ -277,15 +280,20 @@ struct ContentView: View {
             HStack {
                 Spacer()
                 Button("Cancel") { pasteSlot = nil }
-                Button("Add") {
-                    let url = pasteText; pasteSlot = nil
-                    Task { await store.assign(url: url, at: path) }
+                if case .playlist = classified {
+                    // Playlist choices above are the actions; no generic Add.
+                } else {
+                    Button("Add") {
+                        let url = pasteText; pasteSlot = nil
+                        Task { await store.assign(url: url, at: path) }
+                    }
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(classified == nil)
                 }
-                .keyboardShortcut(.defaultAction)
-                .disabled(RadioStore.classify(pasteText) == nil)
             }
         }
         .padding(24)
+        .frame(width: 460)
     }
 
     @ViewBuilder private var detectionLabel: some View {
@@ -325,6 +333,37 @@ struct ContentView: View {
 }
 
 struct IntId: Identifiable { let id: Int }
+
+/// Full-width choice row used in the "add playlist" sheet, so long labels are
+/// never truncated the way inline buttons were.
+struct PlaylistChoiceRow: View {
+    let title: String
+    let subtitle: String
+    let action: () -> Void
+    @State private var hovering = false
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title).font(.system(size: 13, weight: .semibold))
+                    Text(subtitle).font(.caption).foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 8)
+                Image(systemName: "chevron.right").font(.caption).foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, 14).padding(.vertical, 10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: 10)
+                .fill(Color.primary.opacity(hovering ? 0.12 : 0.06)))
+            .overlay(RoundedRectangle(cornerRadius: 10)
+                .stroke(Theme.magenta.opacity(hovering ? 0.7 : 0.25), lineWidth: 1))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering = $0 }
+    }
+}
 
 /// Small "VIDEO" / "PLAYLIST" / "FOLDER" pill.
 struct KindBadge: View {
