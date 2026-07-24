@@ -31,7 +31,7 @@ struct SeekBar: View {
                 }
             }
             .tint(Theme.magenta)
-            .disabled(app.nowPlaying == nil || player.duration <= 0)
+            .disabled(!app.hasNowPlaying || player.duration <= 0)
 
             Text(timecode(duration))
                 .font(.gtaMono(10)).foregroundStyle(Theme.muted)

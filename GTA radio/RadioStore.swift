@@ -15,23 +15,56 @@ enum StationSource: Codable, Equatable {
 }
 
 struct Station: Codable, Equatable, Identifiable {
-    var id: Int              // 0...25
+    var id: Int              // index within its parent folder (0...25)
+    var uid: UUID = UUID()   // stable identity — resume + now-playing track this
     var sourceURL: String?
     var source: StationSource?
     var name: String?        // generated or custom
     var customName: Bool = false
     var thumbnailURL: String?
+    var isFolder: Bool = false
+    var children: [Station]? = nil   // 26 slots when this is a folder
 
-    var isEmpty: Bool { source == nil }
-    var displayName: String { name ?? (isEmpty ? "Empty" : "YouTube Radio") }
+    init(id: Int, sourceURL: String? = nil, source: StationSource? = nil, name: String? = nil,
+         customName: Bool = false, thumbnailURL: String? = nil,
+         isFolder: Bool = false, children: [Station]? = nil) {
+        self.id = id; self.sourceURL = sourceURL; self.source = source; self.name = name
+        self.customName = customName; self.thumbnailURL = thumbnailURL
+        self.isFolder = isFolder; self.children = children
+    }
 
-    /// "VIDEO" / "PLAYLIST" badge, or nil when empty.
+    var isEmpty: Bool { source == nil && !isFolder }
+    var displayName: String {
+        if let name { return name }
+        if isFolder { return "Folder" }
+        return isEmpty ? "Empty" : "YouTube Radio"
+    }
+
+    /// "VIDEO" / "PLAYLIST" / "FOLDER" badge, or nil when empty.
     var kind: String? {
+        if isFolder { return "FOLDER" }
         switch source {
         case .video: return "VIDEO"
         case .playlist: return "PLAYLIST"
         case .none: return nil
         }
+    }
+
+    // Custom decoding so pre-folder saved files (no uid/isFolder/children) still load.
+    enum CodingKeys: String, CodingKey {
+        case id, uid, sourceURL, source, name, customName, thumbnailURL, isFolder, children
+    }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(Int.self, forKey: .id)
+        uid = (try? c.decode(UUID.self, forKey: .uid)) ?? UUID()
+        sourceURL = try? c.decode(String.self, forKey: .sourceURL)
+        source = try? c.decode(StationSource.self, forKey: .source)
+        name = try? c.decode(String.self, forKey: .name)
+        customName = (try? c.decode(Bool.self, forKey: .customName)) ?? false
+        thumbnailURL = try? c.decode(String.self, forKey: .thumbnailURL)
+        isFolder = (try? c.decode(Bool.self, forKey: .isFolder)) ?? false
+        children = try? c.decode([Station].self, forKey: .children)
     }
 }
 
@@ -48,8 +81,9 @@ final class RadioStore: ObservableObject {
 
     private let saveURL: URL
     private let resumeURL: URL
-    // Kept out of @Published so frequent position saves don't redraw the grid.
-    private var resumes: [Int: Resume]
+    // Keyed by station uid (stable across reorder/nesting), kept out of @Published
+    // so frequent position saves don't redraw the grid.
+    private var resumes: [String: Resume]
 
     init() {
         let dir = FileManager.default
@@ -68,11 +102,64 @@ final class RadioStore: ObservableObject {
         }
 
         if let data = try? Data(contentsOf: resumeURL),
-           let loaded = try? JSONDecoder().decode([Int: Resume].self, from: data) {
+           let loaded = try? JSONDecoder().decode([String: Resume].self, from: data) {
             resumes = loaded
         } else {
             resumes = [:]
         }
+
+        // Bake in uids on first load (pre-folder saves had none) so resume
+        // positions, which key off uid, stay stable across launches.
+        persist()
+    }
+
+    static func emptyChildren() -> [Station] { (0..<slotCount).map { Station(id: $0) } }
+
+    // MARK: Tree navigation
+
+    /// Children shown for a folder path ([] = root).
+    func children(at path: [Int]) -> [Station] {
+        path.isEmpty ? stations : (node(at: path)?.children ?? [])
+    }
+
+    /// The node at a path, or nil for the (folder-less) root.
+    func node(at path: [Int]) -> Station? {
+        var current = stations
+        var found: Station?
+        for idx in path {
+            guard current.indices.contains(idx) else { return nil }
+            found = current[idx]
+            current = current[idx].children ?? []
+        }
+        return found
+    }
+
+    /// Depth-first search for a station by uid, returning its path.
+    func path(forUID uid: UUID) -> [Int]? {
+        func search(_ nodes: [Station], _ prefix: [Int]) -> [Int]? {
+            for n in nodes {
+                let p = prefix + [n.id]
+                if n.uid == uid { return p }
+                if let kids = n.children, let hit = search(kids, p) { return hit }
+            }
+            return nil
+        }
+        return search(stations, [])
+    }
+
+    // MARK: Path-addressed mutation
+
+    private func mutate(_ nodes: inout [Station], _ path: ArraySlice<Int>, _ body: (inout Station) -> Void) {
+        guard let idx = path.first, nodes.indices.contains(idx) else { return }
+        if path.count == 1 { body(&nodes[idx]); return }
+        if nodes[idx].children == nil { nodes[idx].children = RadioStore.emptyChildren() }
+        mutate(&nodes[idx].children!, path.dropFirst(), body)
+    }
+
+    private func update(at path: [Int], _ body: (inout Station) -> Void) {
+        guard !path.isEmpty else { return }
+        mutate(&stations, path[...], body)
+        persist()
     }
 
     /// First-run demo stations so the app isn't empty. The user can clear or
@@ -95,12 +182,12 @@ final class RadioStore: ObservableObject {
         }
     }
 
-    // MARK: Resume positions
+    // MARK: Resume positions (keyed by station uid)
 
-    func resume(for slot: Int) -> Resume? { resumes[slot] }
+    func resume(forUID uid: UUID) -> Resume? { resumes[uid.uuidString] }
 
-    func setResume(_ resume: Resume, forSlot slot: Int) {
-        resumes[slot] = resume
+    func setResume(_ resume: Resume, forUID uid: UUID) {
+        resumes[uid.uuidString] = resume
         persistResumes()
     }
 
@@ -108,104 +195,94 @@ final class RadioStore: ObservableObject {
         if let data = try? JSONEncoder().encode(resumes) { try? data.write(to: resumeURL) }
     }
 
-    /// Reorder: pull the station out of `from` and drop it at `to`, shifting the
-    /// rest. Station ids and their resume positions are kept in sync.
-    func move(fromSlot from: Int, toSlot to: Int) {
-        guard from != to, stations.indices.contains(from), stations.indices.contains(to) else { return }
-        var pairs: [(Station, Resume?)] = stations.map { ($0, resumes[$0.id]) }
-        let moved = pairs.remove(at: from)
-        pairs.insert(moved, at: to)
+    // MARK: Reorder within a folder
 
-        var newStations: [Station] = []
-        var newResumes: [Int: Resume] = [:]
-        for (i, pair) in pairs.enumerated() {
-            var st = pair.0
-            st.id = i
-            newStations.append(st)
-            if let r = pair.1 { newResumes[i] = r }
+    /// Move a child within the folder at `parent` from index `from` to `to`.
+    /// Resume follows each station by uid, so nothing needs remapping.
+    func move(inFolder parent: [Int], from: Int, to: Int) {
+        func reorder(_ nodes: inout [Station]) {
+            guard from != to, nodes.indices.contains(from), nodes.indices.contains(to) else { return }
+            let moved = nodes.remove(at: from)
+            nodes.insert(moved, at: to)
+            for i in nodes.indices { nodes[i].id = i }   // keep local index == position
         }
-        stations = newStations
-        resumes = newResumes
-        persist()
+        if parent.isEmpty { reorder(&stations); persist() }
+        else { update(at: parent) { if $0.children != nil { reorder(&$0.children!) } } }
+    }
+
+    // MARK: Path-addressed mutations
+
+    func assign(url: String, at path: [Int]) async {
+        guard let source = Self.classify(url), !path.isEmpty else { return }
+        var uid = UUID()
+        update(at: path) { node in
+            node.isFolder = false
+            node.children = nil
+            node.sourceURL = url
+            node.source = source
+            node.customName = false
+            node.name = provisionalName(for: source)
+            node.thumbnailURL = thumbnail(for: source)
+            uid = node.uid
+        }
+        resumes[uid.uuidString] = nil
         persistResumes()
-    }
 
-    /// New slot index of a station after an array move (mirrors `move`).
-    static func remapIndex(_ idx: Int, from: Int, to: Int) -> Int {
-        if idx == from { return to }
-        if from < to {
-            if idx > from && idx <= to { return idx - 1 }
-        } else {
-            if idx >= to && idx < from { return idx + 1 }
-        }
-        return idx
-    }
-
-    // MARK: Mutations
-
-    func assign(url: String, toSlot slot: Int) async {
-        guard let source = Self.classify(url) else { return }
-        var station = stations[slot]
-        station.sourceURL = url
-        station.source = source
-        station.customName = false
-        // Provisional name so the UI updates instantly.
-        station.name = provisionalName(for: source)
-        station.thumbnailURL = thumbnail(for: source)
-        stations[slot] = station
-        resumes[slot] = nil   // a freshly assigned station starts at the beginning
-        if let data = try? JSONEncoder().encode(resumes) { try? data.write(to: resumeURL) }
-        persist()
-
-        // Best-effort async metadata (no key). Never blocks, never overwrites custom.
-        // We keep our own mqdefault thumbnail (16:9, no letterbox) rather than
-        // oEmbed's hqdefault (4:3 with black bars).
+        // Best-effort oEmbed naming (no key). Never blocks, never overwrites custom.
         if case .video(let id) = source,
            let meta = try? await OEmbed.fetch(videoID: id) {
-            guard !stations[slot].customName, stations[slot].source == source else { return }
-            stations[slot].name = Self.stationName(fromCreator: meta.authorName)
-            persist()
+            update(at: path) { node in
+                guard !node.customName, node.source == source else { return }
+                node.name = Self.stationName(fromCreator: meta.authorName)
+            }
         }
     }
 
-    /// Parse the public playlist page (no key) and drop the first 26 videos into
-    /// the 26 slots as individual stations. Names fill in via oEmbed afterwards.
-    func fillFromPlaylist(_ playlistID: String) async {
+    func makeFolder(at path: [Int], name: String?) {
+        update(at: path) { node in
+            node.source = nil
+            node.sourceURL = nil
+            node.thumbnailURL = nil
+            node.isFolder = true
+            node.name = name
+            node.children = RadioStore.emptyChildren()
+        }
+    }
+
+    /// Fill the 26 children of `parent` with a playlist's first 26 videos.
+    func fillFromPlaylist(_ playlistID: String, at parent: [Int]) async {
         guard let result = try? await PlaylistPageResolver.fetch(playlistID: playlistID),
               !result.videoIDs.isEmpty else { return }
         for (i, vid) in result.videoIDs.prefix(Self.slotCount).enumerated() {
-            await assign(url: "https://youtu.be/\(vid)", toSlot: i)
+            await assign(url: "https://youtu.be/\(vid)", at: parent + [i])
         }
     }
 
-    /// Set every slot to the same playlist (each plays the whole list through).
-    func setAllToPlaylist(_ playlistID: String, name: String?) {
+    /// Set every child of `parent` to the same playlist.
+    func setAllToPlaylist(_ playlistID: String, name: String?, at parent: [Int]) {
         let url = "https://www.youtube.com/playlist?list=\(playlistID)"
-        for i in 0..<Self.slotCount {
-            var s = Station(id: i)
-            s.sourceURL = url
-            s.source = .playlist(id: playlistID)
-            s.name = name ?? "YouTube Playlist FM"
-            stations[i] = s
-            resumes[i] = nil
+        func fill(_ nodes: inout [Station]) {
+            for i in nodes.indices {
+                var s = Station(id: i)
+                s.sourceURL = url
+                s.source = .playlist(id: playlistID)
+                s.name = name ?? "YouTube Playlist FM"
+                nodes[i] = s
+            }
         }
-        persistResumes()
-        persist()
+        if parent.isEmpty { fill(&stations); persist() }
+        else { update(at: parent) { if $0.children == nil { $0.children = RadioStore.emptyChildren() }; fill(&$0.children!) } }
     }
 
-    func rename(slot: Int, to newName: String) {
+    func rename(at path: [Int], to newName: String) {
         let trimmed = newName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
-        stations[slot].name = trimmed
-        stations[slot].customName = true
-        persist()
+        update(at: path) { $0.name = trimmed; $0.customName = true }
     }
 
-    func clear(slot: Int) {
-        stations[slot] = Station(id: slot)
-        resumes[slot] = nil
-        if let data = try? JSONEncoder().encode(resumes) { try? data.write(to: resumeURL) }
-        persist()
+    func clear(at path: [Int]) {
+        guard let idx = path.last else { return }
+        update(at: path) { $0 = Station(id: idx) }
     }
 
     private func persist() {

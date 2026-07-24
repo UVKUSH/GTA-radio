@@ -2,9 +2,9 @@
 //  AppState.swift
 //  GTA radio
 //
-//  Shared app-wide state so the main window AND the radial overlay drive the
-//  same store and the same (single) player. Also owns playback position memory
-//  so stations resume where you left off instead of restarting.
+//  Shared app-wide state. Stations form a tree (folders can hold their own 26),
+//  so playback and navigation are addressed by paths. Resume position tracks the
+//  playing station by its stable uid, so it survives reorders and nesting.
 //
 
 import Foundation
@@ -17,7 +17,12 @@ final class AppState: ObservableObject {
     let store = RadioStore()
     let player = YouTubePlayerController()
 
-    @Published var nowPlaying: Int?
+    /// Which folder is currently open ([] = root).
+    @Published var currentPath: [Int] = []
+    /// The playing station's stable id (nil = off air).
+    @Published var nowPlayingUID: UUID?
+    @Published var nowPlayingIsPlaylist = false
+
     @Published var shuffleOn = false
     @Published var volume: Double = 100 { didSet { player.setVolume(Int(volume)) } }
 
@@ -25,71 +30,79 @@ final class AppState: ObservableObject {
     private var lastPersistedSecond = -1
 
     private init() {
-        // Persist the current station's position every few seconds so a resume
-        // survives even if the app is force-quit mid-song.
         player.$currentTime
             .sink { [weak self] t in
-                guard let self, let slot = self.nowPlaying else { return }
+                guard let self, let uid = self.nowPlayingUID else { return }
                 let sec = Int(t)
                 if sec != self.lastPersistedSecond, sec % 5 == 0 {
                     self.lastPersistedSecond = sec
-                    self.commitPosition(for: slot)
+                    self.commitPosition(uid: uid)
                 }
             }
             .store(in: &cancellables)
     }
 
+    // MARK: Navigation
+
+    var currentStations: [Station] { store.children(at: currentPath) }
+    var currentFolderName: String? { store.node(at: currentPath)?.displayName }
+    var isInFolder: Bool { !currentPath.isEmpty }
+
+    func enterFolder(index: Int) { currentPath.append(index) }
+    func goBack() { if !currentPath.isEmpty { currentPath.removeLast() } }
+    func goHome() { currentPath.removeAll() }
+
     // MARK: Playback
 
-    var isPlaylistPlaying: Bool {
-        guard let n = nowPlaying, case .playlist = store.stations[n].source else { return false }
-        return true
-    }
+    var hasNowPlaying: Bool { nowPlayingUID != nil }
+    var isPlaylistPlaying: Bool { nowPlayingUID != nil && nowPlayingIsPlaylist }
 
-    func play(slot: Int) {
-        guard store.stations.indices.contains(slot) else { return }
-        // Remember where the outgoing station was before we leave it.
-        if let cur = nowPlaying, cur != slot { commitPosition(for: cur) }
+    /// Play the station at `path`. (Callers only pass station paths, not folders.)
+    func play(path: [Int]) {
+        guard let node = store.node(at: path), !node.isFolder else { return }
+        if let prev = nowPlayingUID { commitPosition(uid: prev) }
 
-        let station = store.stations[slot]
-        let resume = store.resume(for: slot)
-        nowPlaying = slot
+        let resume = store.resume(forUID: node.uid)
+        nowPlayingUID = node.uid
 
-        switch station.source {
+        switch node.source {
         case .video(let id):
+            nowPlayingIsPlaylist = false
             player.playVideo(id, startSeconds: resume?.seconds ?? 0)
         case .playlist(let id):
+            nowPlayingIsPlaylist = true
             player.playPlaylist(id, index: resume?.index ?? 0, startSeconds: resume?.seconds ?? 0)
         case .none:
-            nowPlaying = nil
+            nowPlayingUID = nil
         }
     }
 
     func stop() {
-        if let cur = nowPlaying { commitPosition(for: cur) }
+        if let uid = nowPlayingUID { commitPosition(uid: uid) }
         player.stop()
-        nowPlaying = nil
+        nowPlayingUID = nil
     }
 
-    /// Reorder a station to a new slot; the playing station keeps playing.
-    func moveStation(from: Int, to: Int) {
-        // Save the live position first so it travels with the station.
-        if let cur = nowPlaying { commitPosition(for: cur) }
-        store.move(fromSlot: from, toSlot: to)
-        if let cur = nowPlaying {
-            nowPlaying = RadioStore.remapIndex(cur, from: from, to: to)
-        }
+    func commitPosition(uid: UUID) {
+        store.setResume(Resume(seconds: player.currentTime, index: player.currentIndex), forUID: uid)
     }
 
-    /// Save the current player position under the given slot.
-    func commitPosition(for slot: Int) {
-        guard store.stations.indices.contains(slot), !store.stations[slot].isEmpty else { return }
-        store.setResume(Resume(seconds: player.currentTime, index: player.currentIndex), forSlot: slot)
-    }
-
-    /// Called on app quit so the active station's position isn't lost.
     func commitCurrent() {
-        if let cur = nowPlaying { commitPosition(for: cur) }
+        if let uid = nowPlayingUID { commitPosition(uid: uid) }
+    }
+
+    /// Reorder within the current folder; playing station keeps playing (uid-tracked).
+    func moveStation(from: Int, to: Int) {
+        store.move(inFolder: currentPath, from: from, to: to)
+    }
+
+    /// Tune to a random playable station in the current folder.
+    func shuffleAllStations() {
+        let pool = currentStations.filter { !$0.isEmpty && !$0.isFolder && $0.uid != nowPlayingUID }
+        let fallback = currentStations.filter { !$0.isEmpty && !$0.isFolder }
+        if let pick = (pool.isEmpty ? fallback : pool).randomElement() {
+            play(path: currentPath + [pick.id])
+        }
     }
 
     // MARK: Transport
@@ -98,13 +111,6 @@ final class AppState: ObservableObject {
     func next() { player.next() }
     func previous() { player.previous() }
     func seek(to seconds: Double) { player.seek(to: seconds) }
-
-    /// Tune to a random populated station (shuffle across all 26).
-    func shuffleAllStations() {
-        let populated = store.stations.filter { !$0.isEmpty && $0.id != nowPlaying }
-        let pool = populated.isEmpty ? store.stations.filter { !$0.isEmpty } : populated
-        if let pick = pool.randomElement() { play(slot: pick.id) }
-    }
     func toggleShuffle() {
         shuffleOn.toggle()
         player.setShuffle(shuffleOn)

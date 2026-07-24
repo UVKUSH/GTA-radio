@@ -2,21 +2,23 @@
 //  RadialOverlayView.swift
 //  GTA radio
 //
-//  The GTA-style radio dial: 26 stations arranged on a circle. Populated
-//  stations are crisp and clickable; empty slots are dimmed and inert.
-//  Hover to preview in the center, click to tune. Esc / background click closes.
+//  The GTA-style radio dial: the current folder's 26 options arranged on a
+//  circle. Populated stations are crisp and clickable; empty slots are dimmed
+//  and inert; folders open into their own 26. Hover previews + plays a blip.
+//  Esc / background click closes (closing does NOT stop playback).
 //
 
 import SwiftUI
 
 struct RadialOverlayView: View {
-    let onSelect: (Int) -> Void
     let onClose: () -> Void
 
     @ObservedObject private var store = AppState.shared.store
     @ObservedObject private var app = AppState.shared
     @ObservedObject private var settings = SettingsStore.shared
     @State private var hovered: Int?
+
+    private var stations: [Station] { app.currentStations }
 
     var body: some View {
         GeometryReader { geo in
@@ -31,33 +33,39 @@ struct RadialOverlayView: View {
 
                 centerPanel.position(center)
 
-                ForEach(store.stations) { station in
+                ForEach(stations) { station in
                     let angle = Double(station.id) / Double(RadioStore.slotCount) * 2 * .pi - .pi / 2
                     StationNode(station: station,
-                                isCurrent: app.nowPlaying == station.id,
+                                isCurrent: station.uid == app.nowPlayingUID,
                                 isHovered: hovered == station.id)
                         .position(x: center.x + radius * cos(angle),
                                   y: center.y + radius * sin(angle))
                         .onHover { inside in
-                            guard !station.isEmpty else { return }   // empties never highlight
+                            guard !station.isEmpty else { return }
                             if inside, hovered != station.id { SoundPlayer.shared.hoverRotate() }
                             hovered = inside ? station.id : (hovered == station.id ? nil : hovered)
                         }
-                        .onTapGesture {
-                            guard !station.isEmpty else { return }   // empties are non-selectable
-                            onSelect(station.id)
-                        }
+                        .onTapGesture { select(station) }
                 }
             }
         }
         .ignoresSafeArea()
         .focusable()
-        .onExitCommand { onClose() }
+        .onExitCommand { app.isInFolder ? app.goBack() : onClose() }
+    }
+
+    private func select(_ station: Station) {
+        if station.isFolder {
+            app.enterFolder(index: station.id)
+            hovered = nil
+        } else if !station.isEmpty {
+            app.play(path: app.currentPath + [station.id])
+            onClose()
+        }
     }
 
     private var focusStation: Station? {
-        if let h = hovered { return store.stations[h] }
-        if let n = app.nowPlaying { return store.stations[n] }
+        if let h = hovered, let s = stations.first(where: { $0.id == h }) { return s }
         return nil
     }
 
@@ -67,29 +75,28 @@ struct RadialOverlayView: View {
                 Text("GTA").font(.gtaDisplay(15)).foregroundStyle(Theme.bone.opacity(0.7))
                 Text("RADIO").font(.gtaDisplay(15)).foregroundStyle(Theme.magenta.opacity(0.9))
             }
-            if let s = focusStation, !s.isEmpty {
-                Text(s.displayName)
-                    .font(.gtaDisplay(30))
-                    .foregroundStyle(Theme.bone)
-                    .multilineTextAlignment(.center)
-                    .lineLimit(2)
-                if let t = app.player.nowPlayingTitle, app.nowPlaying == s.id {
-                    Text(t)
-                        .font(.system(size: 12)).foregroundStyle(Theme.muted)
-                        .lineLimit(1).frame(width: 240)
-                }
-                Text(app.nowPlaying == s.id ? "▶ NOW PLAYING · \(Theme.frequency(for: s.id)) FM" : "CLICK TO TUNE IN")
-                    .font(.gtaMono(10)).tracking(1)
-                    .foregroundStyle(app.nowPlaying == s.id ? Theme.teal : Theme.muted)
-            } else {
-                Text("Hover a station")
-                    .font(.system(size: 17, weight: .medium))
-                    .foregroundStyle(Theme.muted)
+            if app.isInFolder {
+                Button { app.goBack() } label: {
+                    Label(app.currentFolderName ?? "Folder", systemImage: "chevron.left")
+                        .font(.gtaMono(10)).tracking(1).foregroundStyle(Theme.muted)
+                }.buttonStyle(.plain)
             }
 
-            if app.nowPlaying != nil {
-                TransportControls(showsVolume: true, playSize: 40)
-                    .padding(.top, 6)
+            if let s = focusStation {
+                Text(s.displayName)
+                    .font(.gtaDisplay(30)).foregroundStyle(Theme.bone)
+                    .multilineTextAlignment(.center).lineLimit(2)
+                Text(s.isFolder ? "OPEN FOLDER"
+                     : (s.uid == app.nowPlayingUID ? "▶ NOW PLAYING · \(Theme.frequency(for: s.id)) FM" : "CLICK TO TUNE IN"))
+                    .font(.gtaMono(10)).tracking(1)
+                    .foregroundStyle(s.uid == app.nowPlayingUID ? Theme.teal : Theme.muted)
+            } else {
+                Text("Hover a station")
+                    .font(.system(size: 17, weight: .medium)).foregroundStyle(Theme.muted)
+            }
+
+            if app.hasNowPlaying {
+                TransportControls(showsVolume: true, playSize: 40).padding(.top, 6)
             }
         }
         .frame(width: 300)
@@ -113,7 +120,6 @@ private struct StationNode: View {
                 .frame(width: 96)
                 .shadow(color: .black.opacity(0.8), radius: 3)
         }
-        // The hovered node pops forward above its neighbours.
         .scaleEffect(isHovered ? 1.18 : 1)
         .zIndex(isHovered ? 1 : 0)
         .animation(.spring(response: 0.28, dampingFraction: 0.6), value: isHovered)
@@ -123,12 +129,13 @@ private struct StationNode: View {
     private var circle: some View {
         ZStack {
             Circle().fill(station.isEmpty ? Color.white.opacity(0.05) : Color.black)
-            if let t = station.thumbnailURL, let url = URL(string: t) {
-                AsyncImage(url: url) { img in
-                    img.resizable().aspectRatio(contentMode: .fill)
-                } placeholder: { Color.black }
-                .frame(width: diameter, height: diameter)
-                .clipShape(Circle())
+            if station.isFolder {
+                Image(systemName: "folder.fill").font(.system(size: 20)).foregroundStyle(Theme.magenta)
+            } else if let t = station.thumbnailURL, let url = URL(string: t) {
+                AsyncImage(url: url) { img in img.resizable().aspectRatio(contentMode: .fill) }
+                    placeholder: { Color.black }
+                    .frame(width: diameter, height: diameter)
+                    .clipShape(Circle())
             } else if station.isEmpty {
                 Text(Theme.emoji(for: station.id)).font(.system(size: 22))
             } else {

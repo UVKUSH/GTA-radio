@@ -35,13 +35,7 @@ final class OverlayWindowController {
         panel.hasShadow = false
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
 
-        let root = RadialOverlayView(
-            onSelect: { [weak self] slot in
-                AppState.shared.play(slot: slot)
-                self?.close()
-            },
-            onClose: { [weak self] in self?.close() }
-        )
+        let root = RadialOverlayView(onClose: { [weak self] in self?.close() })
         let hosting = NSHostingView(rootView: root)
         hosting.frame = panel.contentLayoutRect
         hosting.autoresizingMask = [.width, .height]

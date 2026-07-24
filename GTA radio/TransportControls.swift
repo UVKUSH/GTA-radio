@@ -27,7 +27,7 @@ struct TransportControls: View {
                     .shadow(color: .black.opacity(0.4), radius: 6)
             }
             .buttonStyle(.plain)
-            .disabled(app.nowPlaying == nil)
+            .disabled(!app.hasNowPlaying)
 
             control("forward.fill", enabled: app.isPlaylistPlaying) { app.next() }
 

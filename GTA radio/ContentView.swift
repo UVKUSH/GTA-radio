@@ -4,7 +4,7 @@
 //
 //  "Los Santos night HUD": the video (or artwork) plays full-bleed behind a
 //  glass HUD. Stations live in a horizontal filmstrip of circular dials that
-//  echoes the radial wheel — no plain grid.
+//  echoes the radial wheel. Any slot can be a folder holding its own 26.
 //
 
 import SwiftUI
@@ -16,12 +16,13 @@ struct ContentView: View {
     @ObservedObject private var playerCtl = AppState.shared.player
     @Environment(\.openSettings) private var openSettings
 
-    @State private var pasteSlot: Int?
+    @State private var pasteSlot: Int?      // index within the current folder
     @State private var pasteText = ""
     @State private var renameSlot: Int?
     @State private var renameText = ""
 
     private var player: YouTubePlayerController { app.player }
+    private var basePath: [Int] { app.currentPath }
 
     var body: some View {
         ZStack {
@@ -39,20 +40,17 @@ struct ContentView: View {
         .sheet(item: sheetBinding($renameSlot)) { renameSheet(slot: $0.id) }
     }
 
-    // MARK: Background
+    // MARK: Background (stable web view, opacity-layered)
 
-    // The web view is ALWAYS mounted at full size with stable identity — we only
-    // change what's layered over it. Swapping it in/out was what left the layout
-    // stale (things vanished) until the next resize.
     private var background: some View {
         ZStack {
             Theme.ink
             YouTubePlayerView(controller: player)
-                .opacity(app.nowPlaying != nil && !settings.audioOnly ? 1 : 0)
-            if app.nowPlaying == nil {
+                .opacity(app.hasNowPlaying && !settings.audioOnly ? 1 : 0)
+            if !app.hasNowPlaying {
                 LinearGradient(colors: [Theme.ink, .black], startPoint: .top, endPoint: .bottom)
-            } else if settings.audioOnly, let id = app.nowPlaying {
-                artwork(for: store.stations[id])
+            } else if settings.audioOnly {
+                artwork(for: playingStation)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -62,10 +60,10 @@ struct ContentView: View {
     private var scrims: some View {
         VStack {
             LinearGradient(colors: [.black.opacity(0.7), .clear], startPoint: .top, endPoint: .bottom)
-                .frame(height: 160)
+                .frame(height: 150)
             Spacer()
             LinearGradient(colors: [.clear, .black.opacity(0.85)], startPoint: .top, endPoint: .bottom)
-                .frame(height: 320)
+                .frame(height: 300)
         }
         .ignoresSafeArea()
         .allowsHitTesting(false)
@@ -75,25 +73,39 @@ struct ContentView: View {
 
     private var topBar: some View {
         HStack(alignment: .top) {
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 8) {
                     Text("GTA").font(.gtaDisplay(30)).foregroundStyle(Theme.bone)
                     Text("RADIO").font(.gtaDisplay(30)).foregroundStyle(Theme.magenta)
                 }
-                Text("PRESS \(settings.shortcutDescription) FOR THE DIAL")
-                    .font(.gtaMono(10)).tracking(1.5).foregroundStyle(Theme.muted)
+                breadcrumb
             }
             Spacer()
             HStack(spacing: 10) {
                 HUDIconButton(system: "shuffle") { app.shuffleAllStations() }
                 HUDIconButton(system: settings.audioOnly ? "waveform" : "video.fill",
-                              active: !settings.audioOnly) {
-                    settings.audioOnly.toggle()
-                }
+                              active: !settings.audioOnly) { settings.audioOnly.toggle() }
                 HUDIconButton(system: "gearshape.fill") { openSettings() }
             }
         }
         .padding(20)
+    }
+
+    @ViewBuilder private var breadcrumb: some View {
+        if app.isInFolder {
+            HStack(spacing: 6) {
+                Button { app.goBack() } label: {
+                    Image(systemName: "chevron.left").font(.system(size: 11, weight: .bold))
+                }.buttonStyle(.plain)
+                Button("HOME") { app.goHome() }.buttonStyle(.plain)
+                Image(systemName: "chevron.right").font(.system(size: 8))
+                Text((app.currentFolderName ?? "Folder").uppercased()).foregroundStyle(Theme.magenta)
+            }
+            .font(.gtaMono(10)).tracking(1.5).foregroundStyle(Theme.muted)
+        } else {
+            Text("PRESS \(settings.shortcutDescription) FOR THE DIAL")
+                .font(.gtaMono(10)).tracking(1.5).foregroundStyle(Theme.muted)
+        }
     }
 
     // MARK: Bottom HUD
@@ -118,18 +130,16 @@ struct ContentView: View {
     }
 
     @ViewBuilder private var nowPlayingBlock: some View {
-        if let id = app.nowPlaying {
-            let s = store.stations[id]
+        if let s = playingStation, let slot = playingSlotIndex {
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 8) {
-                    Text(playerCtl.lastErrorCode == nil ? "NOW PLAYING · \(Theme.frequency(for: id)) FM"
+                    Text(playerCtl.lastErrorCode == nil ? "NOW PLAYING · \(Theme.frequency(for: slot)) FM"
                                                          : "CAN'T EMBED THIS ONE")
                         .font(.gtaMono(10)).tracking(1.5)
                         .foregroundStyle(playerCtl.lastErrorCode == nil ? Theme.teal : Theme.magenta)
                     if let kind = s.kind { KindBadge(kind: kind) }
                 }
-                Text(s.displayName)
-                    .font(.gtaDisplay(28)).foregroundStyle(Theme.bone).lineLimit(1)
+                Text(s.displayName).font(.gtaDisplay(28)).foregroundStyle(Theme.bone).lineLimit(1)
                 if let t = playerCtl.nowPlayingTitle {
                     Text(t).font(.system(size: 12)).foregroundStyle(Theme.muted).lineLimit(1)
                 }
@@ -145,8 +155,8 @@ struct ContentView: View {
     private var filmstrip: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 12) {
-                ForEach(store.stations) { station in
-                    StationDial(station: station, isCurrent: app.nowPlaying == station.id)
+                ForEach(app.currentStations) { station in
+                    StationDial(station: station, isCurrent: station.uid == app.nowPlayingUID)
                         .onTapGesture { tap(station) }
                         .contextMenu { menu(for: station) }
                         .draggable(String(station.id))
@@ -161,11 +171,22 @@ struct ContentView: View {
         }
     }
 
-    // MARK: Artwork (audio-only background)
+    // MARK: Now-playing lookup
 
-    private func artwork(for station: Station) -> some View {
+    private var playingStation: Station? {
+        guard let uid = app.nowPlayingUID, let path = store.path(forUID: uid) else { return nil }
+        return store.node(at: path)
+    }
+    private var playingSlotIndex: Int? {
+        guard let uid = app.nowPlayingUID, let path = store.path(forUID: uid) else { return nil }
+        return path.last
+    }
+
+    // MARK: Artwork
+
+    private func artwork(for station: Station?) -> some View {
         ZStack {
-            if let t = station.thumbnailURL, let url = URL(string: t) {
+            if let t = station?.thumbnailURL, let url = URL(string: t) {
                 AsyncImage(url: url) { img in img.resizable().aspectRatio(contentMode: .fill) }
                     placeholder: { Theme.ink }
                     .blur(radius: 60).overlay(Color.black.opacity(0.45))
@@ -184,21 +205,28 @@ struct ContentView: View {
     // MARK: Actions
 
     private func tap(_ station: Station) {
-        if station.isEmpty { pasteText = ""; pasteSlot = station.id }
-        else { app.play(slot: station.id) }
+        if station.isFolder { app.enterFolder(index: station.id) }
+        else if station.isEmpty { pasteText = ""; pasteSlot = station.id }
+        else { app.play(path: basePath + [station.id]) }
     }
 
     @ViewBuilder private func menu(for station: Station) -> some View {
-        if !station.isEmpty {
-            Button("Play") { app.play(slot: station.id) }
+        if station.isFolder {
+            Button("Open") { app.enterFolder(index: station.id) }
+            Button("Rename…") { renameText = station.displayName; renameSlot = station.id }
+            Divider()
+            Button("Delete folder", role: .destructive) { store.clear(at: basePath + [station.id]) }
+        } else if !station.isEmpty {
+            Button("Play") { app.play(path: basePath + [station.id]) }
             Button("Rename…") { renameText = station.displayName; renameSlot = station.id }
             Divider()
             Button("Clear", role: .destructive) {
-                if app.nowPlaying == station.id { app.stop() }
-                store.clear(slot: station.id)
+                if station.uid == app.nowPlayingUID { app.stop() }
+                store.clear(at: basePath + [station.id])
             }
         } else {
             Button("Add YouTube URL…") { pasteText = ""; pasteSlot = station.id }
+            Button("New folder here") { store.makeFolder(at: basePath + [station.id], name: nil) }
         }
     }
 
@@ -210,7 +238,8 @@ struct ContentView: View {
     }
 
     private func pasteSheet(slot: Int) -> some View {
-        VStack(alignment: .leading, spacing: 14) {
+        let path = basePath + [slot]
+        return VStack(alignment: .leading, spacing: 14) {
             Text("Add station").font(.gtaDisplay(24)).foregroundStyle(.primary)
             Text("Paste a YouTube video, Shorts, live, or playlist link.")
                 .font(.caption).foregroundStyle(.secondary)
@@ -218,26 +247,24 @@ struct ContentView: View {
                 .textFieldStyle(.roundedBorder).frame(width: 400)
             detectionLabel
 
-            // A playlist can either become one station, fill all 26 with its
-            // videos, or set all 26 to the whole playlist.
             if case .playlist(let listID) = RadioStore.classify(pasteText) {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("This is a playlist — how should it fill the slots?")
                         .font(.caption).foregroundStyle(.secondary)
                     HStack {
                         Button("Add as one station") {
-                            let url = pasteText, s = slot; pasteSlot = nil
-                            Task { await store.assign(url: url, toSlot: s) }
+                            let url = pasteText; pasteSlot = nil
+                            Task { await store.assign(url: url, at: path) }
                         }
                         Button("Fill 26 slots from playlist") {
                             pasteSlot = nil
-                            Task { await store.fillFromPlaylist(listID) }
+                            Task { await store.fillFromPlaylist(listID, at: basePath) }
                         }
                         Button("Set all 26 to this playlist") {
                             pasteSlot = nil
                             Task {
                                 let info = try? await PlaylistPageResolver.fetch(playlistID: listID, limit: 1)
-                                store.setAllToPlaylist(listID, name: info?.title)
+                                store.setAllToPlaylist(listID, name: info?.title, at: basePath)
                             }
                         }
                     }
@@ -248,9 +275,8 @@ struct ContentView: View {
                 Spacer()
                 Button("Cancel") { pasteSlot = nil }
                 Button("Add") {
-                    let url = pasteText, s = slot
-                    pasteSlot = nil
-                    Task { await store.assign(url: url, toSlot: s) }
+                    let url = pasteText; pasteSlot = nil
+                    Task { await store.assign(url: url, at: path) }
                 }
                 .keyboardShortcut(.defaultAction)
                 .disabled(RadioStore.classify(pasteText) == nil)
@@ -281,13 +307,13 @@ struct ContentView: View {
 
     private func renameSheet(slot: Int) -> some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("Rename station").font(.gtaDisplay(24))
-            TextField("Station name", text: $renameText)
+            Text("Rename").font(.gtaDisplay(24))
+            TextField("Name", text: $renameText)
                 .textFieldStyle(.roundedBorder).frame(width: 340)
             HStack {
                 Spacer()
                 Button("Cancel") { renameSlot = nil }
-                Button("Save") { store.rename(slot: slot, to: renameText); renameSlot = nil }
+                Button("Save") { store.rename(at: basePath + [slot], to: renameText); renameSlot = nil }
                     .keyboardShortcut(.defaultAction)
             }
         }
@@ -297,7 +323,7 @@ struct ContentView: View {
 
 struct IntId: Identifiable { let id: Int }
 
-/// Small "VIDEO" / "PLAYLIST" pill.
+/// Small "VIDEO" / "PLAYLIST" / "FOLDER" pill.
 struct KindBadge: View {
     let kind: String
     var body: some View {
@@ -320,28 +346,12 @@ struct StationDial: View {
     var body: some View {
         VStack(spacing: 7) {
             ZStack {
-                Circle().fill(Color.black.opacity(0.45))
-                if let t = station.thumbnailURL, let url = URL(string: t) {
-                    AsyncImage(url: url) { img in img.resizable().aspectRatio(contentMode: .fill) }
-                        placeholder: { Color.black }
-                        .frame(width: diameter, height: diameter)
-                        .clipShape(Circle())
-                } else if station.isEmpty {
-                    Text(Theme.emoji(for: station.id)).font(.system(size: 24)).opacity(0.85)
-                } else {
-                    Image(systemName: "antenna.radiowaves.left.and.right")
-                        .foregroundStyle(Theme.bone)
-                }
+                Circle().fill(station.isEmpty ? Color.white.opacity(0.06) : Color.black)
+                content
             }
             .frame(width: diameter, height: diameter)
             .overlay(ring)
-            .overlay(alignment: .bottomTrailing) {
-                if case .playlist = station.source {
-                    kindIcon("music.note.list")
-                } else if case .video = station.source {
-                    kindIcon("play.fill")
-                }
-            }
+            .overlay(alignment: .bottomTrailing) { kindBadge }
             .shadow(color: isCurrent ? Theme.teal.opacity(0.5) : .black.opacity(0.4),
                     radius: isCurrent ? 10 : 5)
 
@@ -357,10 +367,30 @@ struct StationDial: View {
         .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isCurrent)
     }
 
-    private func kindIcon(_ system: String) -> some View {
+    @ViewBuilder private var content: some View {
+        if station.isFolder {
+            Image(systemName: "folder.fill").font(.system(size: 22)).foregroundStyle(Theme.magenta)
+        } else if let t = station.thumbnailURL, let url = URL(string: t) {
+            AsyncImage(url: url) { img in img.resizable().aspectRatio(contentMode: .fill) }
+                placeholder: { Color.black }
+                .frame(width: diameter, height: diameter)
+                .clipShape(Circle())
+        } else if station.isEmpty {
+            Text(Theme.emoji(for: station.id)).font(.system(size: 24)).opacity(0.85)
+        } else {
+            Image(systemName: "antenna.radiowaves.left.and.right").foregroundStyle(Theme.bone)
+        }
+    }
+
+    @ViewBuilder private var kindBadge: some View {
+        if station.isFolder { badge("folder.fill") }
+        else if case .playlist = station.source { badge("music.note.list") }
+        else if case .video = station.source { badge("play.fill") }
+    }
+
+    private func badge(_ system: String) -> some View {
         Image(systemName: system)
-            .font(.system(size: 8, weight: .bold))
-            .foregroundStyle(.black)
+            .font(.system(size: 8, weight: .bold)).foregroundStyle(.black)
             .frame(width: 18, height: 18)
             .background(Theme.magenta, in: Circle())
             .overlay(Circle().stroke(.black.opacity(0.3), lineWidth: 1))
