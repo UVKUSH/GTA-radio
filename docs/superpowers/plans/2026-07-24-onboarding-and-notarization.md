@@ -640,7 +640,7 @@ git commit -m "build: Developer ID export options + notarization release script"
 **Files:**
 - Create: `docs/RELEASING.md`
 
-- [ ] **Step 1: Write the runbook**
+- [x] **Step 1: Write the runbook**
 
 ```markdown
 # Releasing Wasted FM (GTA Radio)
@@ -690,7 +690,7 @@ Edit `MARKETING_VERSION` (and `CURRENT_PROJECT_VERSION`) in the target build
 settings before running the script.
 ```
 
-- [ ] **Step 2: Commit**
+- [x] **Step 2: Commit**
 
 ```bash
 git add docs/RELEASING.md
