@@ -11,7 +11,7 @@ struct GTA_radioApp: App {
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            RootView()
         }
         .commands {
             CommandGroup(after: .toolbar) {
@@ -26,6 +26,22 @@ struct GTA_radioApp: App {
         Settings {
             SettingsView()
         }
+    }
+}
+
+/// The window's root: the app UI with the launch intro layered on top.
+/// A fresh `RootView` is built each time a window opens, so the intro plays
+/// once per launch and then removes itself.
+struct RootView: View {
+    @State private var showIntro = true
+
+    var body: some View {
+        ContentView()
+            .overlay {
+                if showIntro {
+                    IntroSplashView { showIntro = false }
+                }
+            }
     }
 }
 
