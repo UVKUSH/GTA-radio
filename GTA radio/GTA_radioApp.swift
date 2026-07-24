@@ -13,6 +13,9 @@ struct GTA_radioApp: App {
         WindowGroup {
             RootView()
         }
+        // Deliberate first-run size; macOS persists the user's frame after that.
+        // Floored by ContentView's 820×560 minimum.
+        .defaultSize(width: 960, height: 640)
         .commands {
             CommandGroup(after: .toolbar) {
                 Button("Toggle Radio Dial") {
