@@ -211,7 +211,7 @@ final class RadioStore: ObservableObject {
     }
 
     private func persistResumes() {
-        if let data = try? JSONEncoder().encode(resumes) { try? data.write(to: resumeURL) }
+        if let data = try? JSONEncoder().encode(resumes) { try? data.write(to: resumeURL, options: [.atomic]) }
     }
 
     // MARK: Reorder within a folder
@@ -356,7 +356,7 @@ final class RadioStore: ObservableObject {
     }
 
     private func persistPresets() {
-        if let data = try? JSONEncoder().encode(presets) { try? data.write(to: presetsURL) }
+        if let data = try? JSONEncoder().encode(presets) { try? data.write(to: presetsURL, options: [.atomic]) }
     }
 
     // MARK: Wheel export / import (shareable .json files)
@@ -412,7 +412,9 @@ final class RadioStore: ObservableObject {
 
     private func persist() {
         if let data = try? JSONEncoder().encode(stations) {
-            try? data.write(to: saveURL)
+            // .atomic: a crash mid-write must never truncate the wheel (a broken
+            // stations.json silently falls back to seeded defaults on launch).
+            try? data.write(to: saveURL, options: [.atomic])
         }
     }
 
@@ -473,10 +475,10 @@ final class RadioStore: ObservableObject {
         case "watch":
             if let v = q("v"), isVideoID(v) { return .video(id: v) }
         case "playlist":
-            if let l = q("list"), !l.isEmpty { return .playlist(id: l) }
+            if let l = q("list"), isPlaylistID(l) { return .playlist(id: l) }
         case "shorts", "live", "embed":
             if parts.count >= 2 {
-                if first == "embed", parts[1] == "videoseries", let l = q("list") { return .playlist(id: l) }
+                if first == "embed", parts[1] == "videoseries", let l = q("list"), isPlaylistID(l) { return .playlist(id: l) }
                 if isVideoID(parts[1]) { return .video(id: parts[1]) }
             }
         default: break
@@ -486,6 +488,12 @@ final class RadioStore: ObservableObject {
 
     private static func isVideoID(_ s: String) -> Bool {
         s.count == 11 && s.allSatisfy { $0.isLetter || $0.isNumber || $0 == "-" || $0 == "_" }
+    }
+
+    /// Playlist IDs are interpolated into player JavaScript — the charset check
+    /// is a security boundary, not just hygiene.
+    private static func isPlaylistID(_ s: String) -> Bool {
+        !s.isEmpty && s.count <= 64 && s.allSatisfy { $0.isLetter || $0.isNumber || $0 == "-" || $0 == "_" }
     }
 }
 
