@@ -31,10 +31,17 @@ Out of scope: account/login, data import, Sparkle auto-update, Mac App Store pat
 
 ### 2.2 Replay from Settings (cross-window)
 Settings is its own window/scene, so it can't toggle main-window state directly.
-- `AppState` gains `@Published var replayOnboarding: Bool` (or a bump counter).
-- `RootView` (main window) observes `AppState.shared` and shows the overlay when set.
-- SettingsView "**Replay welcome tour**" button: sets `hasCompletedOnboarding = false`
-  and `AppState.shared.replayOnboarding = true`; RootView reacts and re-presents.
+- `AppState` gains `@Published var replayOnboarding: Bool` and
+  `@Published var replayIntro: Bool` (or bump counters).
+- `RootView` (main window) observes `AppState.shared` and re-presents the matching
+  layer when either is set.
+- SettingsView gets two buttons:
+  - "**Replay Intro video**" → sets `AppState.shared.replayIntro = true`; RootView
+    re-shows `IntroSplashView` (video + mp3, same skippable behavior). Does not touch
+    the onboarding flag.
+  - "**Replay welcome tour**" → sets `hasCompletedOnboarding = false` and
+    `AppState.shared.replayOnboarding = true`; RootView re-presents the coach-marks.
+- Both live in a Settings section (e.g. "Getting started" / under Appearance).
 
 ### 2.3 Coach-mark mechanism (robust, non-interactive)
 - `enum CoachTarget { case dial, wheels, settings }` (extensible).
@@ -80,15 +87,18 @@ Settings is its own window/scene, so it can't toggle main-window state directly.
   `CoachTarget`, `CoachAnchorKey`, `.coachAnchor` modifier.
 - **Edit:** `GTA radio/ContentView.swift` — 3 one-line `.coachAnchor` tags.
 - **Edit:** `GTA radio/GTA_radioApp.swift` — `RootView` gates onboarding after intro,
-  observes `AppState.replayOnboarding`.
-- **Edit:** `GTA radio/AppState.swift` — `replayOnboarding` published + reset helper.
-- **Edit:** `GTA radio/SettingsView.swift` — "Replay welcome tour" button.
+  observes `AppState.replayOnboarding` and `AppState.replayIntro`.
+- **Edit:** `GTA radio/AppState.swift` — `replayOnboarding` + `replayIntro` published
+  + reset helpers.
+- **Edit:** `GTA radio/SettingsView.swift` — "Replay Intro video" and
+  "Replay welcome tour" buttons.
 
 ### 2.7 Testing (manual, macOS)
 - Reset flag → launch → intro → onboarding appears; page through all 6; verify cutouts
   land on dial / steering-wheel / gear.
 - Skip and Esc both dismiss and set the flag.
-- Replay from Settings re-presents on the main window.
+- Replay from Settings: "Replay Intro video" re-plays the splash; "Replay welcome
+  tour" re-presents the coach-marks — both on the main window.
 - Second launch: intro plays, no onboarding.
 - Edge: force a missing anchor → step falls back to centered card; resize window
   mid-tour → cutout follows the element.
