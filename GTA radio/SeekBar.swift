@@ -22,7 +22,9 @@ struct SeekBar: View {
                 .frame(width: 42, alignment: .leading)
 
             Slider(value: Binding(
-                get: { value },
+                // Clamp: a scrub started on a longer track must not exceed the
+                // range after the playlist advances to a shorter one.
+                get: { min(value, duration) },
                 set: { scrubbing = $0 }
             ), in: 0...duration) { editing in
                 if !editing, let s = scrubbing {

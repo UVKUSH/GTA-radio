@@ -64,6 +64,8 @@ final class AppState: ObservableObject {
 
         let resume = store.resume(forUID: node.uid)
         nowPlayingUID = node.uid
+        // A freshly loaded list always starts unshuffled — keep the UI honest.
+        shuffleOn = false
 
         switch node.source {
         case .video(let id):
