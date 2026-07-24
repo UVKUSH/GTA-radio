@@ -228,12 +228,28 @@ final class RadioStore: ObservableObject {
         resumes[uid.uuidString] = nil
         persistResumes()
 
-        // Best-effort oEmbed naming (no key). Never blocks, never overwrites custom.
-        if case .video(let id) = source,
-           let meta = try? await OEmbed.fetch(videoID: id) {
-            update(at: path) { node in
-                guard !node.customName, node.source == source else { return }
-                node.name = Self.stationName(fromCreator: meta.authorName)
+        // Best-effort metadata (no key). Never blocks, never overwrites a custom name.
+        switch source {
+        case .video(let id):
+            if let meta = try? await OEmbed.fetch(videoID: id) {
+                update(at: path) { node in
+                    guard node.source == source, !node.customName else { return }
+                    node.name = Self.stationName(fromCreator: meta.authorName)
+                    // Thumbnail stays the provisional mqdefault (16:9, no black bars).
+                }
+            }
+        case .playlist(let pid):
+            // Playlists have no thumbnail of their own — borrow the first video's.
+            if let result = try? await PlaylistPageResolver.fetch(playlistID: pid) {
+                update(at: path) { node in
+                    guard node.source == source else { return }
+                    if let first = result.videoIDs.first {
+                        node.thumbnailURL = "https://i.ytimg.com/vi/\(first)/mqdefault.jpg"
+                    }
+                    if !node.customName, let title = result.title, !title.isEmpty {
+                        node.name = Self.stationName(fromCreator: title)
+                    }
+                }
             }
         }
     }
