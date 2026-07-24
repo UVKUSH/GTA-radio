@@ -7,9 +7,14 @@
 //
 
 import SwiftUI
+import ServiceManagement
 
 struct SettingsView: View {
     @ObservedObject private var settings = SettingsStore.shared
+
+    // Login-item state is owned by the system (SMAppService), not UserDefaults,
+    // so it lives here rather than in SettingsStore. Mirrors the real status.
+    @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
 
     var body: some View {
         Form {
@@ -58,6 +63,23 @@ struct SettingsView: View {
                 Toggle("Dial sound effects", isOn: $settings.uiSounds)
             } header: {
                 Label("Playback", systemImage: "play.circle.fill")
+            }
+
+            Section {
+                Toggle("Launch at login", isOn: $launchAtLogin)
+                    .onChange(of: launchAtLogin) { _, want in
+                        do {
+                            if want { try SMAppService.mainApp.register() }
+                            else    { try SMAppService.mainApp.unregister() }
+                        } catch {
+                            // System refused — snap the toggle back to reality.
+                            launchAtLogin = SMAppService.mainApp.status == .enabled
+                        }
+                    }
+                Text("Opens GTA Radio automatically so the ⌥R dial is ready without launching it first.")
+                    .font(.caption).foregroundStyle(.secondary)
+            } header: {
+                Label("General", systemImage: "power")
             }
 
             Section("Getting started") {
