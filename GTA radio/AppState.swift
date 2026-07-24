@@ -31,6 +31,11 @@ final class AppState: ObservableObject {
         }
     }
 
+    /// Set by Settings (a separate window) to re-trigger the intro or the tour
+    /// on the main window's RootView; RootView flips them back to false.
+    @Published var replayIntro = false
+    @Published var replayOnboarding = false
+
     private var cancellables = Set<AnyCancellable>()
     private var lastPersistedSecond = -1
 
