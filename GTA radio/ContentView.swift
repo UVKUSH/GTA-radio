@@ -424,26 +424,34 @@ struct ContentView: View {
     }
 
     /// The slot the sheet was opened on while it's still empty, then the first
-    /// empty sibling — never overwrites an occupied slot.
-    private func nextEmptyPath(preferring slot: Int) -> [Int]? {
-        let siblings = store.children(at: basePath)
-        if siblings.indices.contains(slot), siblings[slot].isEmpty { return basePath + [slot] }
-        return siblings.first(where: \.isEmpty).map { basePath + [$0.id] }
+    /// empty sibling — never overwrites an occupied slot. Takes the parent
+    /// explicitly: adds must stick to the folder the sheet was opened in even
+    /// if the user navigates elsewhere while assigns are still running.
+    private func nextEmptyPath(in parent: [Int], preferring slot: Int) -> [Int]? {
+        let siblings = store.children(at: parent)
+        if siblings.indices.contains(slot), siblings[slot].isEmpty { return parent + [slot] }
+        return siblings.first(where: \.isEmpty).map { parent + [$0.id] }
     }
 
     private func addNow(_ vid: String, slot: Int) {
-        guard let path = nextEmptyPath(preferring: slot) else { return }
-        pickerAdded.insert(vid)
+        let parent = basePath
         pickerSelection.removeAll { $0 == vid }
-        Task { await store.assign(url: "https://youtu.be/\(vid)", at: path, nameByTitle: true) }
+        // Target slot is resolved inside the task so rapid double-clicks
+        // serialize on the MainActor instead of racing for the same slot.
+        Task {
+            guard let path = nextEmptyPath(in: parent, preferring: slot) else { return }
+            pickerAdded.insert(vid)
+            await store.assign(url: "https://youtu.be/\(vid)", at: path, nameByTitle: true)
+        }
     }
 
     private func addSelected(slot: Int) {
         let picks = pickerSelection
+        let parent = basePath
         pasteSlot = nil
         Task {
             for vid in picks {
-                guard let path = nextEmptyPath(preferring: slot) else { break }
+                guard let path = nextEmptyPath(in: parent, preferring: slot) else { break }
                 await store.assign(url: "https://youtu.be/\(vid)", at: path, nameByTitle: true)
             }
         }
