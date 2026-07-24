@@ -129,6 +129,18 @@ see 04-playback-pipeline.md §5).
 
 ---
 
+## Medium findings resolved (2026-07-24)
+
+- **M-2** (`61b554f`): GTARadioKit linked into the app; `classify` delegates
+  to the tested `YouTubeURLParser` (24 tests). `ENABLE_USER_SELECTED_FILES`
+  aligned to readwrite.
+- **M-3** (`61b554f`): "Fill empty slots from playlist" — occupied slots and
+  folders are never overwritten (same contract as the picker).
+- **M-4** (`66f0450`): 12s ready-timeout → "PLAYER OFFLINE" HUD state; shell
+  reloads on app activation and next tune; queued tunes flush on ready.
+- **M-5** (`61b554f`): resume entries pruned against live tree + all presets
+  on launch, clear, and preset delete.
+
 ## Second-pass hunt (2026-07-24) — found & fixed same day
 
 - Picker adds could land in the wrong folder (live `currentPath` read during
