@@ -496,7 +496,7 @@ git commit -m "feat(onboarding): first-run spotlight tour wired to real UI + rep
 **Interfaces:**
 - Consumes: `AppState.replayIntro`/`replayOnboarding` (Task 3), `@AppStorage("hasCompletedOnboarding")`.
 
-- [ ] **Step 1: Add a "Getting started" section**
+- [x] **Step 1: Add a "Getting started" section**
 
 In `GTA radio/SettingsView.swift`, add a new `Section` inside the `Form` (after the existing audio/sounds `Section` near `SettingsView.swift:56`):
 
@@ -512,16 +512,16 @@ In `GTA radio/SettingsView.swift`, add a new `Section` inside the `Form` (after 
             }
 ```
 
-- [ ] **Step 2: Build**
+- [x] **Step 2: Build**
 
 Run: `xcodebuild -project "GTA radio.xcodeproj" -scheme "GTA radio" -destination 'platform=macOS' build 2>&1 | grep -E "BUILD (SUCCEEDED|FAILED)|error:"`
 Expected: `** BUILD SUCCEEDED **`
 
-- [ ] **Step 3: Manual verification**
+- [x] **Step 3: Manual verification**
 
 Launch the app, open Settings (⌘,). Click **Replay Intro video** → the intro plays on the main window. Click **Replay welcome tour** → the tour appears on the main window.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add "GTA radio/SettingsView.swift"
