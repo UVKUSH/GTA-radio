@@ -102,6 +102,7 @@ struct ContentView: View {
             }
             .padding(.horizontal, 20).padding(.vertical, 16)
             .glassPanel()
+            .opacity(settings.controlsOpacity)
 
             filmstrip
         }
@@ -112,10 +113,13 @@ struct ContentView: View {
         if let id = app.nowPlaying {
             let s = store.stations[id]
             VStack(alignment: .leading, spacing: 3) {
-                Text(playerCtl.lastErrorCode == nil ? "NOW PLAYING · \(Theme.frequency(for: id)) FM"
-                                                     : "CAN'T EMBED THIS ONE")
-                    .font(.gtaMono(10)).tracking(1.5)
-                    .foregroundStyle(playerCtl.lastErrorCode == nil ? Theme.teal : Theme.magenta)
+                HStack(spacing: 8) {
+                    Text(playerCtl.lastErrorCode == nil ? "NOW PLAYING · \(Theme.frequency(for: id)) FM"
+                                                         : "CAN'T EMBED THIS ONE")
+                        .font(.gtaMono(10)).tracking(1.5)
+                        .foregroundStyle(playerCtl.lastErrorCode == nil ? Theme.teal : Theme.magenta)
+                    if let kind = s.kind { KindBadge(kind: kind) }
+                }
                 Text(s.displayName)
                     .font(.gtaDisplay(28)).foregroundStyle(Theme.bone).lineLimit(1)
                 if let t = playerCtl.nowPlayingTitle {
@@ -137,6 +141,12 @@ struct ContentView: View {
                     StationDial(station: station, isCurrent: app.nowPlaying == station.id)
                         .onTapGesture { tap(station) }
                         .contextMenu { menu(for: station) }
+                        .draggable(String(station.id))
+                        .dropDestination(for: String.self) { items, _ in
+                            guard let first = items.first, let from = Int(first) else { return false }
+                            app.moveStation(from: from, to: station.id)
+                            return true
+                        }
                 }
             }
             .padding(.horizontal, 4).padding(.vertical, 6)
@@ -198,6 +208,7 @@ struct ContentView: View {
                 .font(.caption).foregroundStyle(.secondary)
             TextField("https://youtube.com/watch?v=…", text: $pasteText)
                 .textFieldStyle(.roundedBorder).frame(width: 400)
+            detectionLabel
             HStack {
                 Spacer()
                 Button("Cancel") { pasteSlot = nil }
@@ -211,6 +222,26 @@ struct ContentView: View {
             }
         }
         .padding(24)
+    }
+
+    @ViewBuilder private var detectionLabel: some View {
+        let trimmed = pasteText.trimmingCharacters(in: .whitespaces)
+        if trimmed.isEmpty {
+            Label("Paste a link to detect its type", systemImage: "link")
+                .font(.caption).foregroundStyle(.secondary)
+        } else {
+            switch RadioStore.classify(pasteText) {
+            case .video:
+                Label("Detected: Video", systemImage: "play.rectangle.fill")
+                    .font(.caption).foregroundStyle(.green)
+            case .playlist:
+                Label("Detected: Playlist", systemImage: "music.note.list")
+                    .font(.caption).foregroundStyle(.blue)
+            case .none:
+                Label("Not a recognized YouTube link", systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption).foregroundStyle(.orange)
+            }
+        }
     }
 
     private func renameSheet(slot: Int) -> some View {
@@ -230,6 +261,18 @@ struct ContentView: View {
 }
 
 struct IntId: Identifiable { let id: Int }
+
+/// Small "VIDEO" / "PLAYLIST" pill.
+struct KindBadge: View {
+    let kind: String
+    var body: some View {
+        Text(kind)
+            .font(.gtaMono(9)).tracking(0.5)
+            .padding(.horizontal, 6).padding(.vertical, 2)
+            .background(Theme.magenta.opacity(0.9), in: Capsule())
+            .foregroundStyle(.black)
+    }
+}
 
 // MARK: - Station dial (filmstrip element)
 
@@ -258,6 +301,13 @@ struct StationDial: View {
             }
             .frame(width: diameter, height: diameter)
             .overlay(ring)
+            .overlay(alignment: .bottomTrailing) {
+                if case .playlist = station.source {
+                    kindIcon("music.note.list")
+                } else if case .video = station.source {
+                    kindIcon("play.fill")
+                }
+            }
             .shadow(color: isCurrent ? Theme.teal.opacity(0.5) : .black.opacity(0.4),
                     radius: isCurrent ? 10 : 5)
 
@@ -271,6 +321,15 @@ struct StationDial: View {
         }
         .frame(width: 88, height: 116)
         .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isCurrent)
+    }
+
+    private func kindIcon(_ system: String) -> some View {
+        Image(systemName: system)
+            .font(.system(size: 8, weight: .bold))
+            .foregroundStyle(.black)
+            .frame(width: 18, height: 18)
+            .background(Theme.magenta, in: Circle())
+            .overlay(Circle().stroke(.black.opacity(0.3), lineWidth: 1))
     }
 
     @ViewBuilder private var ring: some View {

@@ -39,6 +39,10 @@ struct SettingsView: View {
                     Text("Overlay background opacity: \(Int(settings.backgroundOpacity * 100))%")
                     Slider(value: $settings.backgroundOpacity, in: 0.15...0.95)
                 }
+                VStack(alignment: .leading) {
+                    Text("Audio controls opacity: \(Int(settings.controlsOpacity * 100))%")
+                    Slider(value: $settings.controlsOpacity, in: 0.2...1.0)
+                }
             } header: {
                 Label("Appearance", systemImage: "paintbrush.fill")
             }

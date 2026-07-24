@@ -71,6 +71,16 @@ final class AppState: ObservableObject {
         nowPlaying = nil
     }
 
+    /// Reorder a station to a new slot; the playing station keeps playing.
+    func moveStation(from: Int, to: Int) {
+        // Save the live position first so it travels with the station.
+        if let cur = nowPlaying { commitPosition(for: cur) }
+        store.move(fromSlot: from, toSlot: to)
+        if let cur = nowPlaying {
+            nowPlaying = RadioStore.remapIndex(cur, from: from, to: to)
+        }
+    }
+
     /// Save the current player position under the given slot.
     func commitPosition(for slot: Int) {
         guard store.stations.indices.contains(slot), !store.stations[slot].isEmpty else { return }

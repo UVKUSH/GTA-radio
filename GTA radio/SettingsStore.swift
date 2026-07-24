@@ -24,6 +24,7 @@ final class SettingsStore: ObservableObject {
     @Published var modShift: Bool { didSet { defaults.set(modShift, forKey: "modShift"); onHotKeyChange?() } }
 
     @Published var backgroundOpacity: Double { didSet { defaults.set(backgroundOpacity, forKey: "backgroundOpacity") } }
+    @Published var controlsOpacity: Double { didSet { defaults.set(controlsOpacity, forKey: "controlsOpacity") } }
     @Published var audioOnly: Bool { didSet { defaults.set(audioOnly, forKey: "audioOnly") } }
 
     private init() {
@@ -33,6 +34,7 @@ final class SettingsStore: ObservableObject {
         modControl = defaults.object(forKey: "modControl") as? Bool ?? false
         modShift = defaults.object(forKey: "modShift") as? Bool ?? false
         backgroundOpacity = defaults.object(forKey: "backgroundOpacity") as? Double ?? 0.55
+        controlsOpacity = defaults.object(forKey: "controlsOpacity") as? Double ?? 1.0
         audioOnly = defaults.object(forKey: "audioOnly") as? Bool ?? false
     }
 

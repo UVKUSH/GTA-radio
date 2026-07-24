@@ -48,8 +48,10 @@ final class OverlayWindowController {
         panel.contentView = hosting
 
         panel.setFrame(frame, display: true)
-        panel.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
+        // Non-activating: the overlay floats and handles its own clicks (play/
+        // pause, tune) WITHOUT pulling the main app window forward.
+        panel.orderFrontRegardless()
+        panel.makeKey()
         self.panel = panel
     }
 

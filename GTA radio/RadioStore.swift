@@ -24,6 +24,15 @@ struct Station: Codable, Equatable, Identifiable {
 
     var isEmpty: Bool { source == nil }
     var displayName: String { name ?? (isEmpty ? "Empty" : "YouTube Radio") }
+
+    /// "VIDEO" / "PLAYLIST" badge, or nil when empty.
+    var kind: String? {
+        switch source {
+        case .video: return "VIDEO"
+        case .playlist: return "PLAYLIST"
+        case .none: return nil
+        }
+    }
 }
 
 /// Where a station was last playing, so it resumes instead of restarting.
@@ -72,9 +81,44 @@ final class RadioStore: ObservableObject {
 
     func setResume(_ resume: Resume, forSlot slot: Int) {
         resumes[slot] = resume
-        if let data = try? JSONEncoder().encode(resumes) {
-            try? data.write(to: resumeURL)
+        persistResumes()
+    }
+
+    private func persistResumes() {
+        if let data = try? JSONEncoder().encode(resumes) { try? data.write(to: resumeURL) }
+    }
+
+    /// Reorder: pull the station out of `from` and drop it at `to`, shifting the
+    /// rest. Station ids and their resume positions are kept in sync.
+    func move(fromSlot from: Int, toSlot to: Int) {
+        guard from != to, stations.indices.contains(from), stations.indices.contains(to) else { return }
+        var pairs: [(Station, Resume?)] = stations.map { ($0, resumes[$0.id]) }
+        let moved = pairs.remove(at: from)
+        pairs.insert(moved, at: to)
+
+        var newStations: [Station] = []
+        var newResumes: [Int: Resume] = [:]
+        for (i, pair) in pairs.enumerated() {
+            var st = pair.0
+            st.id = i
+            newStations.append(st)
+            if let r = pair.1 { newResumes[i] = r }
         }
+        stations = newStations
+        resumes = newResumes
+        persist()
+        persistResumes()
+    }
+
+    /// New slot index of a station after an array move (mirrors `move`).
+    static func remapIndex(_ idx: Int, from: Int, to: Int) -> Int {
+        if idx == from { return to }
+        if from < to {
+            if idx > from && idx <= to { return idx - 1 }
+        } else {
+            if idx >= to && idx < from { return idx + 1 }
+        }
+        return idx
     }
 
     // MARK: Mutations

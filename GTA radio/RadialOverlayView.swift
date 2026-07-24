@@ -40,6 +40,7 @@ struct RadialOverlayView: View {
                                   y: center.y + radius * sin(angle))
                         .onHover { inside in
                             guard !station.isEmpty else { return }   // empties never highlight
+                            if inside, hovered != station.id { SoundPlayer.shared.hover(station.id) }
                             hovered = inside ? station.id : (hovered == station.id ? nil : hovered)
                         }
                         .onTapGesture {
