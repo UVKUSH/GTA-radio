@@ -359,6 +359,46 @@ final class RadioStore: ObservableObject {
         if let data = try? JSONEncoder().encode(presets) { try? data.write(to: presetsURL) }
     }
 
+    // MARK: Wheel export / import (shareable .json files)
+
+    func exportData(for preset: WheelPreset) -> Data? {
+        let enc = JSONEncoder()
+        enc.outputFormatting = [.prettyPrinted, .sortedKeys]
+        return try? enc.encode(preset)
+    }
+
+    /// Import a wheel from an exported file (also accepts a raw stations array,
+    /// i.e. someone's stations.json). Returns the imported name, nil on failure.
+    @discardableResult
+    func importPreset(from data: Data) -> String? {
+        let dec = JSONDecoder()
+        var preset: WheelPreset?
+        if let p = try? dec.decode(WheelPreset.self, from: data) {
+            preset = p
+        } else if let stations = try? dec.decode([Station].self, from: data), !stations.isEmpty {
+            preset = WheelPreset(name: "Imported wheel", savedAt: Date(), stations: stations)
+        }
+        guard var p = preset, !p.stations.isEmpty else { return nil }
+
+        // Normalize to exactly 26 slots with positional ids, whatever came in.
+        if p.stations.count > Self.slotCount { p.stations = Array(p.stations.prefix(Self.slotCount)) }
+        while p.stations.count < Self.slotCount { p.stations.append(Station(id: p.stations.count)) }
+        for i in p.stations.indices { p.stations[i].id = i }
+
+        p.id = UUID()   // never collide with an existing preset's identity
+        p.savedAt = Date()
+        var name = p.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        if name.isEmpty { name = "Imported wheel" }
+        let base = name
+        var n = 2
+        while presets.contains(where: { $0.name == name }) { name = "\(base) \(n)"; n += 1 }
+        p.name = name
+
+        presets.insert(p, at: 0)
+        persistPresets()
+        return name
+    }
+
     func rename(at path: [Int], to newName: String) {
         let trimmed = newName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }

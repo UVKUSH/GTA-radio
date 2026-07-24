@@ -8,11 +8,13 @@
 //
 
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct WheelsSheet: View {
     @Binding var isPresented: Bool
     @ObservedObject private var store = AppState.shared.store
     @State private var newName = ""
+    @State private var importMessage: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -42,7 +44,8 @@ struct WheelsSheet: View {
                                       isBackup: preset.name == RadioStore.backupPresetName,
                                       onLoad: { load(preset) },
                                       onRename: { store.renamePreset(id: preset.id, to: $0) },
-                                      onDelete: { store.deletePreset(id: preset.id) })
+                                      onDelete: { store.deletePreset(id: preset.id) },
+                                      onExport: { export(preset) })
                         }
                     }
                 }
@@ -50,6 +53,10 @@ struct WheelsSheet: View {
             }
 
             HStack {
+                Button("Import wheel…") { importWheel() }
+                if let msg = importMessage {
+                    Text(msg).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                }
                 Spacer()
                 Button("Done") { isPresented = false }.keyboardShortcut(.defaultAction)
             }
@@ -70,6 +77,33 @@ struct WheelsSheet: View {
         AppState.shared.goHome()   // old folder paths may not exist in this wheel
         isPresented = false
     }
+
+    private func export(_ preset: WheelPreset) {
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.json]
+        panel.nameFieldStringValue = "\(preset.name).gtawheel.json"
+        guard panel.runModal() == .OK, let url = panel.url,
+              let data = store.exportData(for: preset) else { return }
+        do {
+            try data.write(to: url)
+            importMessage = "Exported “\(preset.name)”."
+        } catch {
+            importMessage = "Export failed: \(error.localizedDescription)"
+        }
+    }
+
+    private func importWheel() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.json]
+        panel.allowsMultipleSelection = false
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        guard let data = try? Data(contentsOf: url),
+              let name = store.importPreset(from: data) else {
+            importMessage = "Couldn't read that file as a wheel."
+            return
+        }
+        importMessage = "Imported “\(name)”."
+    }
 }
 
 /// One saved wheel: thumbnail collage, name (editable), meta line, actions.
@@ -79,6 +113,7 @@ private struct PresetRow: View {
     let onLoad: () -> Void
     let onRename: (String) -> Void
     let onDelete: () -> Void
+    let onExport: () -> Void
 
     @State private var renaming = false
     @State private var renameText = ""
@@ -126,6 +161,8 @@ private struct PresetRow: View {
                 Button("Load") { onLoad() }
                 Menu {
                     Button("Rename…") { renameText = preset.name; renaming = true }
+                    Button("Export…") { onExport() }
+                    Divider()
                     Button("Delete", role: .destructive) { onDelete() }
                 } label: {
                     Image(systemName: "ellipsis.circle")
