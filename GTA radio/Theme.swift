@@ -58,6 +58,45 @@ extension View {
     }
 }
 
+/// Radiating "on air" ripple that sits over the playing station's circle.
+/// Restarts on its own whenever it (re)appears, so it can be conditionally
+/// attached with `if isCurrent`.
+struct BroadcastRipple: View {
+    @State private var pulse = false
+    var body: some View {
+        Circle()
+            .stroke(Theme.teal.opacity(pulse ? 0 : 0.55), lineWidth: pulse ? 1 : 3)
+            .scaleEffect(pulse ? 1.55 : 1)
+            .allowsHitTesting(false)
+            .onAppear {
+                withAnimation(.easeOut(duration: 1.8).repeatForever(autoreverses: false)) {
+                    pulse = true
+                }
+            }
+    }
+}
+
+/// Tiny 3-bar bouncing equalizer shown on the now-playing station.
+struct EqualizerBadge: View {
+    @State private var animating = false
+    private let low: [CGFloat] = [4, 7, 5]
+    private let high: [CGFloat] = [11, 5, 9]
+
+    var body: some View {
+        HStack(alignment: .bottom, spacing: 2) {
+            ForEach(0..<3, id: \.self) { i in
+                Capsule().fill(Theme.teal)
+                    .frame(width: 3, height: animating ? high[i] : low[i])
+                    .animation(.easeInOut(duration: 0.38 + Double(i) * 0.11)
+                        .repeatForever(autoreverses: true), value: animating)
+            }
+        }
+        .frame(height: 12, alignment: .bottom)
+        .allowsHitTesting(false)
+        .onAppear { animating = true }
+    }
+}
+
 /// Small circular glass icon button used across the HUD.
 struct HUDIconButton: View {
     let system: String
