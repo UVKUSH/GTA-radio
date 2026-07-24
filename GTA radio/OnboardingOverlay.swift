@@ -41,6 +41,7 @@ let onboardingSteps: [OnboardingStep] = [
     .init(target: nil,        title: "Wasted FM",       body: "GTA Radio — your personal radio, built from any YouTube link."),
     .init(target: .stations,  title: "Your stations",   body: "Click a station to tune in. Every wheel holds 26 slots."),
     .init(target: .stations,  title: "Add anything",    body: "Click an empty slot to paste any YouTube video or playlist. No API key, no sign-in."),
+    .init(target: .stations,  title: "Make it yours",   body: "Right-click any station to rename, clear, or make a folder — and drag stations to reorder."),
     .init(target: nil,        title: "Pop it anywhere", body: "Press ⌥R anywhere on your Mac to summon the radial dial over any app."),
     .init(target: .wheels,    title: "Wheels",          body: "Save whole 26-station layouts as Wheels — switch between them with ⌘1–9."),
     .init(target: .settings,  title: "Settings",        body: "Audio-only mode, a custom hotkey, and appearance all live here."),
