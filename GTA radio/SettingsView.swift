@@ -59,6 +59,16 @@ struct SettingsView: View {
             } header: {
                 Label("Playback", systemImage: "play.circle.fill")
             }
+
+            Section("Getting started") {
+                Button("Replay Intro video") {
+                    AppState.shared.replayIntro = true
+                }
+                Button("Replay welcome tour") {
+                    UserDefaults.standard.set(false, forKey: "hasCompletedOnboarding")
+                    AppState.shared.replayOnboarding = true
+                }
+            }
         }
         .formStyle(.grouped)
         .frame(width: 420)
