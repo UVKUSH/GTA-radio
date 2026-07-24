@@ -1,6 +1,7 @@
 .superpowers/
 build/
 DerivedData/
+GTARadioKit/.build/
 GTARadioKit/.swiftpm/
 *.xcuserstate
 .DS_Store
