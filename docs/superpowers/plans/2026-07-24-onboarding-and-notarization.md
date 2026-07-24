@@ -264,7 +264,7 @@ git commit -m "feat(onboarding): AppState replayIntro/replayOnboarding flags"
 **Interfaces:**
 - Consumes: `OnboardingOverlay` (Task 2), `AppState.replayIntro`/`replayOnboarding` (Task 3), `CoachAnchorKey` (Task 1, used in Task 5).
 
-- [ ] **Step 1: Replace `RootView` with the gated version**
+- [x] **Step 1: Replace `RootView` with the gated version**
 
 In `GTA radio/GTA_radioApp.swift`, replace the existing `struct RootView` with:
 
@@ -312,7 +312,7 @@ struct RootView: View {
 
 > This references `OnboardingOverlay(anchors:proxy:onFinish:)`, whose `anchors`/`proxy` params are added in Task 5. Do Task 5 in the same session before building, OR temporarily call `OnboardingOverlay { ... }` and add the params in Task 5. The commit for this task happens after Task 5 builds green.
 
-- [ ] **Step 2: Proceed directly to Task 5 (they compile together).**
+- [x] **Step 2: Proceed directly to Task 5 (they compile together).**
 
 ---
 
@@ -326,7 +326,7 @@ struct RootView: View {
 - Consumes: `CoachAnchorKey` anchors + `GeometryProxy` from `RootView` (Task 4).
 - Produces: `OnboardingOverlay(anchors: [CoachTarget: Anchor<CGRect>], proxy: GeometryProxy, onFinish: () -> Void)`.
 
-- [ ] **Step 1: Tag the real elements in ContentView**
+- [x] **Step 1: Tag the real elements in ContentView**
 
 In `GTA radio/ContentView.swift`:
 
@@ -349,7 +349,7 @@ Gear button (`ContentView.swift:108`):
                     .coachAnchor(.settings)
 ```
 
-- [ ] **Step 2: Update `OnboardingOverlay` to take anchors and draw the cutout**
+- [x] **Step 2: Update `OnboardingOverlay` to take anchors and draw the cutout**
 
 Replace the `OnboardingOverlay` struct header + `body` + `overlayContent` from Task 2 with:
 
@@ -403,7 +403,7 @@ struct OnboardingOverlay: View {
                         RoundedRectangle(cornerRadius: 14, style: .continuous)
                             .frame(width: r.width, height: r.height)
                             .position(x: r.midX, y: r.midY)
-                            .blendMode(.destructiveOut)
+                            .blendMode(.destinationOut)   // correct SwiftUI mask-cutout blend
                     }
                 }
                 .compositingGroup()
@@ -464,12 +464,12 @@ struct OnboardingOverlay: View {
 
 (Delete the now-duplicated `overlayContent`/old `calloutCard`/old `body` from Task 2 so only this version remains.)
 
-- [ ] **Step 3: Build**
+- [x] **Step 3: Build**
 
 Run: `xcodebuild -project "GTA radio.xcodeproj" -scheme "GTA radio" -destination 'platform=macOS' build 2>&1 | grep -E "BUILD (SUCCEEDED|FAILED)|error:"`
 Expected: `** BUILD SUCCEEDED **`
 
-- [ ] **Step 4: Manual verification**
+- [x] **Step 4: Manual verification**
 
 ```bash
 # reset the first-run flag for THIS app's sandbox container, then launch
@@ -479,7 +479,7 @@ open "$(ls -dt ~/Library/Developer/Xcode/DerivedData*/GTA_radio-*/Build/Products
 ```
 Observe: intro plays → tour appears → step 2 spotlights the filmstrip, step 5 the steering-wheel, step 6 the gear; Next/Back/dots/Skip/Esc all work; "Get started" dismisses.
 
-- [ ] **Step 5: Commit (Tasks 4 + 5 together)**
+- [x] **Step 5: Commit (Tasks 4 + 5 together)**
 
 ```bash
 git add "GTA radio/OnboardingOverlay.swift" "GTA radio/ContentView.swift" "GTA radio/GTA_radioApp.swift"
