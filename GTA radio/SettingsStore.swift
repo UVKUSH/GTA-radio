@@ -18,10 +18,16 @@ final class SettingsStore: ObservableObject {
     var onHotKeyChange: (() -> Void)?
 
     @Published var hotKeyCode: Int { didSet { defaults.set(hotKeyCode, forKey: "hotKeyCode"); onHotKeyChange?() } }
-    @Published var modOption: Bool { didSet { defaults.set(modOption, forKey: "modOption"); onHotKeyChange?() } }
-    @Published var modCommand: Bool { didSet { defaults.set(modCommand, forKey: "modCommand"); onHotKeyChange?() } }
-    @Published var modControl: Bool { didSet { defaults.set(modControl, forKey: "modControl"); onHotKeyChange?() } }
-    @Published var modShift: Bool { didSet { defaults.set(modShift, forKey: "modShift"); onHotKeyChange?() } }
+    @Published var modOption: Bool { didSet { defaults.set(modOption, forKey: "modOption"); ensureModifier(); onHotKeyChange?() } }
+    @Published var modCommand: Bool { didSet { defaults.set(modCommand, forKey: "modCommand"); ensureModifier(); onHotKeyChange?() } }
+    @Published var modControl: Bool { didSet { defaults.set(modControl, forKey: "modControl"); ensureModifier(); onHotKeyChange?() } }
+    @Published var modShift: Bool { didSet { defaults.set(modShift, forKey: "modShift"); ensureModifier(); onHotKeyChange?() } }
+
+    /// A hotkey with zero modifiers would register the bare letter globally
+    /// (typing that letter in ANY app would trigger the dial). Never allow it.
+    private func ensureModifier() {
+        if !modOption && !modCommand && !modControl && !modShift { modOption = true }
+    }
 
     @Published var backgroundOpacity: Double { didSet { defaults.set(backgroundOpacity, forKey: "backgroundOpacity") } }
     @Published var controlsOpacity: Double { didSet { defaults.set(controlsOpacity, forKey: "controlsOpacity") } }

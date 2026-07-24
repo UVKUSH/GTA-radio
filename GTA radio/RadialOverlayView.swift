@@ -213,7 +213,7 @@ struct RadialOverlayView: View {
                 TransportControls(showsVolume: true, playSize: 40).padding(.top, 6)
             }
         }
-        .frame(width: 300)
+        .frame(width: 340)   // fits transport + volume (300 made them overflow)
     }
 }
 
