@@ -6,7 +6,7 @@ set -euo pipefail
 
 PROJECT="GTA radio.xcodeproj"
 SCHEME="GTA radio"
-APP_NAME="GTA radio"
+APP_NAME="Wasted FM"
 DMG_NAME="WastedFM"
 NOTARY_PROFILE="GTARadioNotary"
 BUILD="build"

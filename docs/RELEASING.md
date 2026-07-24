@@ -35,7 +35,7 @@ Output: `build/WastedFM.dmg` — notarized and stapled. Distribute that file.
 ## Verify by hand (optional)
 
 ```bash
-spctl -a -vvv build/dmg/"GTA radio.app"   # -> "accepted / source=Notarized Developer ID"
+spctl -a -vvv build/dmg/"Wasted FM.app"   # -> "accepted / source=Notarized Developer ID"
 stapler validate build/WastedFM.dmg       # -> "The validate action worked!"
 ```
 
