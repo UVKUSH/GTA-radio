@@ -10,6 +10,10 @@ key, no downloads, no account.
   <em>Press ⌥R from anywhere — the dial floats over your desktop, any app, any window.</em>
 </p>
 
+## Demo
+
+[![Watch the demo](https://img.youtube.com/vi/gHCbKFGqf-w/maxresdefault.jpg)](https://www.youtube.com/watch?v=gHCbKFGqf-w)
+
 ## Download
 
 **[⬇️ Download WastedFM.dmg](https://github.com/UVKUSH/GTA-radio/releases/latest/download/WastedFM.dmg)**
