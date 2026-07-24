@@ -19,6 +19,14 @@ enum Theme {
         let f = 88.1 + Double(slot) * 0.4     // 88.1 … 98.1
         return String(format: "%.1f", f)
     }
+
+    /// A distinct emoji for each empty slot so the wheel is never blank.
+    private static let emojis = ["📻","🎧","🎸","🎹","🎺","🥁","🎷","🎤","🪕","🎻",
+                                 "🎚️","🎛️","💿","📀","🔊","🎼","🕺","💃","🌃","🚗",
+                                 "🛻","🌆","🎶","🎵","⭐️","🔥"]
+    static func emoji(for slot: Int) -> String {
+        emojis[((slot % emojis.count) + emojis.count) % emojis.count]
+    }
 }
 
 /// Condensed-black display type — the GTA wordmark / station-name look.

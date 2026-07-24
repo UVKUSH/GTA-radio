@@ -97,6 +97,14 @@ final class AppState: ObservableObject {
     func togglePlayPause() { player.togglePlayPause() }
     func next() { player.next() }
     func previous() { player.previous() }
+    func seek(to seconds: Double) { player.seek(to: seconds) }
+
+    /// Tune to a random populated station (shuffle across all 26).
+    func shuffleAllStations() {
+        let populated = store.stations.filter { !$0.isEmpty && $0.id != nowPlaying }
+        let pool = populated.isEmpty ? store.stations.filter { !$0.isEmpty } : populated
+        if let pick = pool.randomElement() { play(slot: pick.id) }
+    }
     func toggleShuffle() {
         shuffleOn.toggle()
         player.setShuffle(shuffleOn)

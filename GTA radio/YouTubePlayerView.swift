@@ -24,6 +24,7 @@ final class YouTubePlayerController: NSObject, ObservableObject, WKScriptMessage
     @Published var nowPlayingTitle: String?
     @Published var lastErrorCode: Int?
     @Published var currentTime: Double = 0
+    @Published var duration: Double = 0
     @Published var currentIndex: Int = -1   // playlist index, -1 if not a playlist
 
     private var ready = false
@@ -74,6 +75,7 @@ final class YouTubePlayerController: NSObject, ObservableObject, WKScriptMessage
     func setVolume(_ v: Int) { evaluate("ctl('vol',\(v))") }
     func mute() { evaluate("ctl('mute')") }
     func unmute() { evaluate("ctl('unmute')") }
+    func seek(to seconds: Double) { evaluate("if(window.player)window.player.seekTo(\(seconds),true)") }
 
     func stop() {
         evaluate("ctl('stop')")
@@ -100,6 +102,7 @@ final class YouTubePlayerController: NSObject, ObservableObject, WKScriptMessage
             if let t = body["title"] as? String, !t.isEmpty { nowPlayingTitle = t }
         case "time":
             if let t = body["t"] as? Double { currentTime = t }
+            if let d = body["dur"] as? Double { duration = d }
             if let i = body["idx"] as? Int { currentIndex = i }
         case "error":
             if let code = body["code"] as? Int { lastErrorCode = code }
@@ -141,7 +144,7 @@ final class YouTubePlayerController: NSObject, ObservableObject, WKScriptMessage
     function startTimer(){
       if(window._t) return;
       window._t = setInterval(function(){
-        try{ post({type:'time', t:player.getCurrentTime(), idx:(player.getPlaylistIndex?player.getPlaylistIndex():-1)}); }catch(e){}
+        try{ post({type:'time', t:player.getCurrentTime(), dur:player.getDuration(), idx:(player.getPlaylistIndex?player.getPlaylistIndex():-1)}); }catch(e){}
       }, 1000);
     }
     function onYouTubeIframeAPIReady(){

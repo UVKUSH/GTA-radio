@@ -64,7 +64,7 @@ final class RadioStore: ObservableObject {
            loaded.count == Self.slotCount {
             stations = loaded
         } else {
-            stations = (0..<Self.slotCount).map { Station(id: $0) }
+            stations = Self.seededDefaults()
         }
 
         if let data = try? Data(contentsOf: resumeURL),
@@ -72,6 +72,26 @@ final class RadioStore: ObservableObject {
             resumes = loaded
         } else {
             resumes = [:]
+        }
+    }
+
+    /// First-run demo stations so the app isn't empty. The user can clear or
+    /// replace any of them. Empty slots stay empty (they show emoji placeholders).
+    private static func seededDefaults() -> [Station] {
+        let defaults: [Int: (String, String)] = [
+            0: ("jfKfPfyJRdk", "Lofi Girl FM"),
+            1: ("5yx6BWlEVcY", "Chillhop FM"),
+            2: ("aqz-KE-bpKQ", "Blender FM"),
+            3: ("21X5lGlDOfg", "Nature FM"),
+            4: ("M7lc1UVf-VE", "Developers FM"),
+        ]
+        return (0..<slotCount).map { i in
+            if let (vid, name) = defaults[i] {
+                return Station(id: i, sourceURL: "https://youtu.be/\(vid)",
+                               source: .video(id: vid), name: name, customName: false,
+                               thumbnailURL: "https://i.ytimg.com/vi/\(vid)/mqdefault.jpg")
+            }
+            return Station(id: i)
         }
     }
 

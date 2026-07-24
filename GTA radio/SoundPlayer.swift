@@ -23,10 +23,13 @@ final class SoundPlayer {
         }
     }
 
-    /// Play the blip for a given station index (restarts if mid-play).
-    func hover(_ index: Int) {
+    private var rotation = 0
+
+    /// Play the next blip, cycling 1→2→3 so consecutive hovers never repeat.
+    func hoverRotate() {
         guard !players.isEmpty else { return }
-        let p = players[((index % players.count) + players.count) % players.count]
+        rotation = (rotation + 1) % players.count
+        let p = players[rotation]
         p.currentTime = 0
         p.play()
     }

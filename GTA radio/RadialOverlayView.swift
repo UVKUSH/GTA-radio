@@ -40,7 +40,7 @@ struct RadialOverlayView: View {
                                   y: center.y + radius * sin(angle))
                         .onHover { inside in
                             guard !station.isEmpty else { return }   // empties never highlight
-                            if inside, hovered != station.id { SoundPlayer.shared.hover(station.id) }
+                            if inside, hovered != station.id { SoundPlayer.shared.hoverRotate() }
                             hovered = inside ? station.id : (hovered == station.id ? nil : hovered)
                         }
                         .onTapGesture {
@@ -101,37 +101,55 @@ private struct StationNode: View {
     let isCurrent: Bool
     let isHovered: Bool
 
-    private var diameter: CGFloat { isHovered ? 74 : 60 }
+    private var diameter: CGFloat { isHovered ? 74 : 58 }
 
     var body: some View {
+        VStack(spacing: 5) {
+            circle
+            Text(station.isEmpty ? "\(Theme.frequency(for: station.id)) FM" : station.displayName)
+                .font(.gtaDisplay(12))
+                .foregroundStyle(labelColor)
+                .lineLimit(1)
+                .frame(width: 96)
+                .shadow(color: .black.opacity(0.8), radius: 3)
+        }
+        // The hovered node pops forward above its neighbours.
+        .scaleEffect(isHovered ? 1.18 : 1)
+        .zIndex(isHovered ? 1 : 0)
+        .animation(.spring(response: 0.28, dampingFraction: 0.6), value: isHovered)
+        .opacity(station.isEmpty ? 0.32 : 1)
+    }
+
+    private var circle: some View {
         ZStack {
             Circle().fill(station.isEmpty ? Color.white.opacity(0.05) : Color.black)
             if let t = station.thumbnailURL, let url = URL(string: t) {
                 AsyncImage(url: url) { img in
                     img.resizable().aspectRatio(contentMode: .fill)
                 } placeholder: { Color.black }
-                .frame(width: diameter, height: diameter)   // fill + clip → no black bars
+                .frame(width: diameter, height: diameter)
                 .clipShape(Circle())
             } else if station.isEmpty {
-                Image(systemName: "plus").foregroundStyle(.white.opacity(0.2))
+                Text(Theme.emoji(for: station.id)).font(.system(size: 22))
             } else {
-                Image(systemName: "antenna.radiowaves.left.and.right")
-                    .foregroundStyle(.white)
+                Image(systemName: "antenna.radiowaves.left.and.right").foregroundStyle(.white)
             }
         }
         .frame(width: diameter, height: diameter)
-        .overlay(
-            Circle().stroke(strokeColor, lineWidth: isCurrent ? 3 : (isHovered ? 3 : 1))
-        )
-        .shadow(color: .black.opacity(0.5), radius: isHovered ? 10 : 4)
-        .animation(.spring(response: 0.25, dampingFraction: 0.7), value: isHovered)
-        // Populated = crisp; empty = dimmed and clearly inert.
-        .opacity(station.isEmpty ? 0.28 : 1)
+        .overlay(Circle().stroke(strokeColor, lineWidth: isCurrent ? 3 : (isHovered ? 3 : 1)))
+        .shadow(color: isCurrent ? Theme.teal.opacity(0.6) : .black.opacity(0.5),
+                radius: isHovered ? 12 : 4)
     }
 
     private var strokeColor: Color {
-        if isCurrent { return .green }
-        if isHovered { return .white }
+        if isCurrent { return Theme.teal }
+        if isHovered { return Theme.bone }
         return .white.opacity(0.15)
+    }
+
+    private var labelColor: Color {
+        if isCurrent { return Theme.teal }
+        if station.isEmpty { return Theme.muted }
+        return Theme.bone
     }
 }

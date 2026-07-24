@@ -41,18 +41,22 @@ struct ContentView: View {
 
     // MARK: Background
 
-    @ViewBuilder private var background: some View {
-        if app.nowPlaying != nil, !settings.audioOnly {
-            YouTubePlayerView(controller: player).ignoresSafeArea()
-        } else if let id = app.nowPlaying {
-            artwork(for: store.stations[id]).ignoresSafeArea()
-            // Keep the (muted-of-video, still-audible) web view mounted off-screen.
-            YouTubePlayerView(controller: player).frame(width: 2, height: 2).opacity(0.02)
-        } else {
-            LinearGradient(colors: [Theme.ink, .black], startPoint: .top, endPoint: .bottom)
-                .ignoresSafeArea()
-            YouTubePlayerView(controller: player).frame(width: 2, height: 2).opacity(0.02)
+    // The web view is ALWAYS mounted at full size with stable identity — we only
+    // change what's layered over it. Swapping it in/out was what left the layout
+    // stale (things vanished) until the next resize.
+    private var background: some View {
+        ZStack {
+            Theme.ink
+            YouTubePlayerView(controller: player)
+                .opacity(app.nowPlaying != nil && !settings.audioOnly ? 1 : 0)
+            if app.nowPlaying == nil {
+                LinearGradient(colors: [Theme.ink, .black], startPoint: .top, endPoint: .bottom)
+            } else if settings.audioOnly, let id = app.nowPlaying {
+                artwork(for: store.stations[id])
+            }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .ignoresSafeArea()
     }
 
     private var scrims: some View {
@@ -81,6 +85,7 @@ struct ContentView: View {
             }
             Spacer()
             HStack(spacing: 10) {
+                HUDIconButton(system: "shuffle") { app.shuffleAllStations() }
                 HUDIconButton(system: settings.audioOnly ? "waveform" : "video.fill",
                               active: !settings.audioOnly) {
                     settings.audioOnly.toggle()
@@ -95,10 +100,13 @@ struct ContentView: View {
 
     private var bottomHUD: some View {
         VStack(spacing: 16) {
-            HStack(alignment: .center, spacing: 20) {
-                nowPlayingBlock
-                Spacer(minLength: 12)
-                TransportControls()
+            VStack(spacing: 12) {
+                HStack(alignment: .center, spacing: 20) {
+                    nowPlayingBlock
+                    Spacer(minLength: 12)
+                    TransportControls()
+                }
+                SeekBar()
             }
             .padding(.horizontal, 20).padding(.vertical, 16)
             .glassPanel()
@@ -292,8 +300,7 @@ struct StationDial: View {
                         .frame(width: diameter, height: diameter)
                         .clipShape(Circle())
                 } else if station.isEmpty {
-                    Image(systemName: "plus").font(.system(size: 20, weight: .bold))
-                        .foregroundStyle(Theme.magenta)
+                    Text(Theme.emoji(for: station.id)).font(.system(size: 24)).opacity(0.85)
                 } else {
                     Image(systemName: "antenna.radiowaves.left.and.right")
                         .foregroundStyle(Theme.bone)
