@@ -6,6 +6,10 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		B680C5D10000000000000003 /* GTARadioKit in Frameworks */ = {isa = PBXBuildFile; productRef = B680C5D10000000000000002 /* GTARadioKit */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXFileReference section */
 		B680C5B53012B07800153F37 /* GTA radio.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "GTA radio.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -23,6 +27,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				B680C5D10000000000000003 /* GTARadioKit in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -65,6 +70,7 @@
 			);
 			name = "GTA radio";
 			packageProductDependencies = (
+				B680C5D10000000000000002 /* GTARadioKit */,
 			);
 			productName = "GTA radio";
 			productReference = B680C5B53012B07800153F37 /* GTA radio.app */;
@@ -94,6 +100,9 @@
 			);
 			mainGroup = B680C5AC3012B07700153F37;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				B680C5D10000000000000001 /* XCLocalSwiftPackageReference "GTARadioKit" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = B680C5B63012B07800153F37 /* Products */;
 			projectDirPath = "";
@@ -258,7 +267,7 @@
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
-				ENABLE_USER_SELECTED_FILES = readonly;
+				ENABLE_USER_SELECTED_FILES = readwrite;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
@@ -292,7 +301,7 @@
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
-				ENABLE_USER_SELECTED_FILES = readonly;
+				ENABLE_USER_SELECTED_FILES = readwrite;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
@@ -314,6 +323,20 @@
 			name = Release;
 		};
 /* End XCBuildConfiguration section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		B680C5D10000000000000001 /* XCLocalSwiftPackageReference "GTARadioKit" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = GTARadioKit;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		B680C5D10000000000000002 /* GTARadioKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = GTARadioKit;
+		};
+/* End XCSwiftPackageProductDependency section */
 
 /* Begin XCConfigurationList section */
 		B680C5B03012B07700153F37 /* Build configuration list for PBXProject "GTA radio" */ = {

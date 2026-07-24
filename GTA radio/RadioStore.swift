@@ -8,6 +8,7 @@
 
 import Foundation
 import Combine
+import GTARadioKit
 
 enum StationSource: Codable, Equatable {
     case video(id: String)
@@ -130,6 +131,7 @@ final class RadioStore: ObservableObject {
         // Bake in uids on first load (pre-folder saves had none) so resume
         // positions, which key off uid, stay stable across launches.
         persist()
+        pruneResumes()
     }
 
     static func emptyChildren() -> [Station] { (0..<slotCount).map { Station(id: $0) } }
@@ -214,6 +216,23 @@ final class RadioStore: ObservableObject {
         if let data = try? JSONEncoder().encode(resumes) { try? data.write(to: resumeURL, options: [.atomic]) }
     }
 
+    /// Drop resume entries whose uid no longer exists in the live tree or any
+    /// saved wheel — otherwise resumes.json grows forever.
+    private func pruneResumes() {
+        var known = Set<String>()
+        func walk(_ nodes: [Station]) {
+            for n in nodes {
+                known.insert(n.uid.uuidString)
+                if let kids = n.children { walk(kids) }
+            }
+        }
+        walk(stations)
+        for p in presets { walk(p.stations) }
+        let before = resumes.count
+        resumes = resumes.filter { known.contains($0.key) }
+        if resumes.count != before { persistResumes() }
+    }
+
     // MARK: Reorder within a folder
 
     /// Move a child within the folder at `parent` from index `from` to `to`.
@@ -287,12 +306,14 @@ final class RadioStore: ObservableObject {
         }
     }
 
-    /// Fill the 26 children of `parent` with a playlist's first 26 videos.
+    /// Fill `parent`'s EMPTY slots with a playlist's videos, in order. Occupied
+    /// slots (and folders) are never touched — same contract as the picker.
     func fillFromPlaylist(_ playlistID: String, at parent: [Int]) async {
         guard let result = try? await PlaylistPageResolver.fetch(playlistID: playlistID),
               !result.videoIDs.isEmpty else { return }
-        for (i, vid) in result.videoIDs.prefix(Self.slotCount).enumerated() {
-            await assign(url: "https://youtu.be/\(vid)", at: parent + [i], nameByTitle: true)
+        let targets = children(at: parent).filter(\.isEmpty).map(\.id)
+        for (slot, vid) in zip(targets, result.videoIDs) {
+            await assign(url: "https://youtu.be/\(vid)", at: parent + [slot], nameByTitle: true)
         }
     }
 
@@ -343,6 +364,7 @@ final class RadioStore: ObservableObject {
     func deletePreset(id: UUID) {
         presets.removeAll { $0.id == id }
         persistPresets()
+        pruneResumes()
     }
 
     private func upsertPreset(named name: String, snapshot: [Station]) {
@@ -408,6 +430,7 @@ final class RadioStore: ObservableObject {
     func clear(at path: [Int]) {
         guard let idx = path.last else { return }
         update(at: path) { $0 = Station(id: idx) }
+        pruneResumes()
     }
 
     private func persist() {
@@ -457,43 +480,15 @@ final class RadioStore: ObservableObject {
 
     // MARK: Local URL classification (no network)
 
+    /// Delegates to the tested GTARadioKit parser (charset-validated IDs are a
+    /// security boundary: they're interpolated into player JavaScript).
+    /// Channels/handles/users aren't playable sources here, so they map to nil.
     static func classify(_ raw: String) -> StationSource? {
-        var text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return nil }
-        if !text.contains("://") { text = "https://" + text }
-        guard let c = URLComponents(string: text), let host = c.host?.lowercased() else { return nil }
-
-        func q(_ n: String) -> String? { c.queryItems?.first { $0.name == n }?.value }
-        let parts = c.path.split(separator: "/").map(String.init)
-
-        if host == "youtu.be", let id = parts.first, isVideoID(id) { return .video(id: id) }
-
-        let youtube = ["youtube.com", "www.youtube.com", "m.youtube.com", "music.youtube.com"]
-        guard youtube.contains(host), let first = parts.first else { return nil }
-
-        switch first {
-        case "watch":
-            if let v = q("v"), isVideoID(v) { return .video(id: v) }
-        case "playlist":
-            if let l = q("list"), isPlaylistID(l) { return .playlist(id: l) }
-        case "shorts", "live", "embed":
-            if parts.count >= 2 {
-                if first == "embed", parts[1] == "videoseries", let l = q("list"), isPlaylistID(l) { return .playlist(id: l) }
-                if isVideoID(parts[1]) { return .video(id: parts[1]) }
-            }
-        default: break
+        switch YouTubeURLParser.parse(raw) {
+        case .video(let id): return .video(id: id)
+        case .playlist(let id): return .playlist(id: id)
+        default: return nil
         }
-        return nil
-    }
-
-    private static func isVideoID(_ s: String) -> Bool {
-        s.count == 11 && s.allSatisfy { $0.isLetter || $0.isNumber || $0 == "-" || $0 == "_" }
-    }
-
-    /// Playlist IDs are interpolated into player JavaScript — the charset check
-    /// is a security boundary, not just hygiene.
-    private static func isPlaylistID(_ s: String) -> Bool {
-        !s.isEmpty && s.count <= 64 && s.allSatisfy { $0.isLetter || $0.isNumber || $0 == "-" || $0 == "_" }
     }
 }
 
