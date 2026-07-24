@@ -131,6 +131,17 @@ see 04-playback-pipeline.md §5).
 
 ## Resolved during recent work (for the record)
 
+- **H-1 fixed** (`1e87cbd`): `classify` now charset-validates playlist IDs
+  (both `playlist` and `embed/videoseries` paths).
+- **H-2 fixed** (`1e87cbd`): all three JSON writes are `.atomic`.
+- **M-1 fixed** (`8544c82`): loads re-apply the user's volume.
+- **User-reported: second playlist never loaded** (`8544c82`): `playVideo()`
+  fired immediately after `loadPlaylist()` made the IFrame player resume the
+  old list; removed the extra `playVideo` (load*() autoplays) and `stopVideo()`
+  first. Keep this contract in the player shell.
+- **Playlist visibility** (`f20d7fa`): add sheet now probes the playlist page
+  and warns on private/unavailable lists, disabling scrape-dependent options.
+
 - Audio-only mode locked window resizing (unclipped `.fill` artwork inflating
   layout) — fixed via overlay-on-clear + `.clipped()`.
 - Dial hover dead/stuck: per-node `.onHover` fought hover-driven motion —
