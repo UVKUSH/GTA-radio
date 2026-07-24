@@ -231,7 +231,7 @@ git commit -m "feat(onboarding): step model + centered-card overlay"
 **Interfaces:**
 - Produces: `AppState.replayIntro: Bool` and `AppState.replayOnboarding: Bool` (`@Published`, default `false`).
 
-- [ ] **Step 1: Add the flags**
+- [x] **Step 1: Add the flags**
 
 In `GTA radio/AppState.swift`, inside `final class AppState`, add near the other `@Published` properties (e.g. after `@Published var shuffleOn = false`):
 
@@ -242,12 +242,12 @@ In `GTA radio/AppState.swift`, inside `final class AppState`, add near the other
     @Published var replayOnboarding = false
 ```
 
-- [ ] **Step 2: Build**
+- [x] **Step 2: Build**
 
 Run: `xcodebuild -project "GTA radio.xcodeproj" -scheme "GTA radio" -destination 'platform=macOS' build 2>&1 | grep -E "BUILD (SUCCEEDED|FAILED)|error:"`
 Expected: `** BUILD SUCCEEDED **`
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add "GTA radio/AppState.swift"
