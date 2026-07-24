@@ -129,6 +129,27 @@ see 04-playback-pipeline.md §5).
 
 ---
 
+## Second-pass hunt (2026-07-24) — found & fixed same day
+
+- Picker adds could land in the wrong folder (live `currentPath` read during
+  the post-dismiss assign loop) and rapid double-click adds could race for
+  one slot → parent captured at action time, slot resolved inside the
+  MainActor task (`e7e17dd`).
+- Shuffle badge stayed lit after tuning to a new list, though fresh loads are
+  always unshuffled → `play()` resets `shuffleOn` (`2a8e2e0`).
+- Mid-scrub value could exceed the slider range when a playlist advanced to a
+  shorter track → clamped (`2a8e2e0`).
+- Settings allowed a zero-modifier hotkey, registering a bare letter
+  **globally** (typing that letter in any app triggered the dial) →
+  `ensureModifier()` re-enables ⌥ when the last modifier is switched off
+  (`34da1db`).
+- Dial center panel (300pt) overflowed by the transport+volume row (~320pt),
+  scattering controls → widened to 340pt (`34da1db`).
+
+Still open, noticed but deliberately not "fixed": loading a wheel preset
+while picker assigns are still running applies those adds to the new wheel's
+empty slots — rare double-async edge; revisit only if it bites.
+
 ## Resolved during recent work (for the record)
 
 - **H-1 fixed** (`1e87cbd`): `classify` now charset-validates playlist IDs
